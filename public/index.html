@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sinergia — Gestión de local</title>
+<link rel="icon" href="data:," />
+<link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+
+<!-- ---------- LOGIN ---------- -->
+<div id="login-screen" class="login-screen">
+  <div class="login-card">
+    <div class="brand">
+      <div class="brand-mark">S</div>
+      <h1>Sinergia</h1>
+      <p>Gestión de stock y ventas</p>
+    </div>
+    <form id="login-form">
+      <label>Usuario
+        <input type="text" id="login-username" autocomplete="username" required />
+      </label>
+      <label>Contraseña
+        <input type="password" id="login-password" autocomplete="current-password" required />
+      </label>
+      <p id="login-error" class="error-text" hidden></p>
+      <button type="submit" class="btn btn-primary btn-block">Ingresar</button>
+    </form>
+  </div>
+</div>
+
+<!-- ---------- APP ---------- -->
+<div id="app" class="app" hidden>
+  <header class="topbar">
+    <div class="topbar-brand">
+      <div class="brand-mark small">S</div>
+      <span>Sinergia</span>
+    </div>
+    <nav id="main-nav" class="main-nav"></nav>
+    <div class="topbar-user">
+      <span id="user-name"></span>
+      <button id="logout-btn" class="btn btn-ghost btn-sm">Salir</button>
+    </div>
+  </header>
+
+  <main class="content">
+
+    <!-- DASHBOARD -->
+    <section id="view-dashboard" class="view">
+      <h2>Resumen del día</h2>
+      <div class="cards" id="dashboard-cards"></div>
+      <div id="dashboard-lowstock" class="panel"></div>
+    </section>
+
+    <!-- VENTA DIARIA -->
+    <section id="view-venta" class="view">
+      <h2>Registrar venta</h2>
+      <form id="sale-form" class="form-card">
+        <label>Prenda
+          <select id="sale-product" required></select>
+        </label>
+        <div class="grid-2">
+          <label>Cantidad
+            <input type="number" id="sale-qty" value="1" min="1" required />
+          </label>
+          <label>Precio unitario
+            <input type="number" id="sale-price" step="0.01" required />
+          </label>
+        </div>
+        <div class="grid-2">
+          <label>Descuento
+            <select id="sale-discount-type">
+              <option value="none">Sin descuento</option>
+              <option value="percent">Porcentaje (%)</option>
+              <option value="amount">Monto fijo ($)</option>
+            </select>
+          </label>
+          <label>Valor descuento
+            <input type="number" id="sale-discount-value" step="0.01" value="0" />
+          </label>
+        </div>
+        <label class="checkbox-row">
+          <input type="checkbox" id="sale-is-cc" />
+          Es cuenta corriente (la clienta se la lleva y va pagando)
+        </label>
+        <label id="sale-payment-wrap">Medio de pago
+          <select id="sale-payment">
+            <option value="efectivo">Efectivo</option>
+            <option value="debito">Tarjeta débito</option>
+            <option value="credito">Tarjeta crédito</option>
+            <option value="transferencia">Transferencia</option>
+          </select>
+        </label>
+        <label id="sale-client-wrap" hidden>Clienta (cuenta corriente)
+          <div class="inline-add">
+            <select id="sale-client"></select>
+            <button type="button" id="sale-client-new-btn" class="btn btn-ghost btn-sm">+ Nueva</button>
+          </div>
+        </label>
+        <label>Nota (opcional)
+          <input type="text" id="sale-note" placeholder="Ej: talle M, cambio, etc." />
+        </label>
+        <div class="sale-total-row">Total: <strong id="sale-total-preview">$0</strong></div>
+        <p id="sale-error" class="error-text" hidden></p>
+        <button type="submit" class="btn btn-primary btn-block">Confirmar venta</button>
+      </form>
+    </section>
+
+    <!-- HISTORIAL DE VENTAS -->
+    <section id="view-historial" class="view">
+      <h2>Historial de ventas</h2>
+      <div class="filters">
+        <label>Desde <input type="date" id="hist-from" /></label>
+        <label>Hasta <input type="date" id="hist-to" /></label>
+        <button id="hist-filter-btn" class="btn btn-secondary btn-sm">Filtrar</button>
+      </div>
+      <div class="table-wrap">
+        <table id="sales-table">
+          <thead>
+            <tr>
+              <th>Fecha</th><th>Prenda</th><th>Cant.</th><th>Precio</th><th>Desc.</th>
+              <th>Total</th><th>Pago</th><th>Vendió</th><th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- STOCK -->
+    <section id="view-stock" class="view">
+      <div class="view-header-row">
+        <h2>Stock</h2>
+        <button id="new-product-btn" class="btn btn-primary btn-sm">+ Prenda</button>
+      </div>
+      <div class="table-wrap">
+        <table id="products-table">
+          <thead>
+            <tr id="products-thead-row">
+              <th>Prenda</th><th>Categoría</th><th>Talle</th><th>Color</th>
+              <th>Costo</th><th>Venta</th><th>Stock</th><th>Proveedor</th><th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- PROVEEDORES -->
+    <section id="view-proveedores" class="view">
+      <div class="view-header-row">
+        <h2>Proveedores</h2>
+        <button id="new-supplier-btn" class="btn btn-primary btn-sm">+ Proveedor</button>
+      </div>
+      <div class="table-wrap">
+        <table id="suppliers-table">
+          <thead><tr><th>Nombre</th><th>Teléfono</th><th>Notas</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- MOVIMIENTOS DE STOCK -->
+    <section id="view-movimientos" class="view">
+      <h2>Ingresos y egresos de mercadería</h2>
+      <form id="movement-form" class="form-card">
+        <label>Prenda
+          <select id="mov-product" required></select>
+        </label>
+        <div class="grid-2">
+          <label>Tipo
+            <select id="mov-type">
+              <option value="ingreso">Ingreso (compra de mercadería)</option>
+              <option value="egreso">Egreso (rotura, pérdida, devolución)</option>
+            </select>
+          </label>
+          <label>Cantidad
+            <input type="number" id="mov-qty" min="1" value="1" required />
+          </label>
+        </div>
+        <label>Motivo
+          <input type="text" id="mov-reason" placeholder="Ej: compra a proveedor, prenda dañada..." />
+        </label>
+        <label class="checkbox-row" id="mov-expense-wrap">
+          <input type="checkbox" id="mov-register-expense" />
+          Registrar también como gasto (costo x cantidad)
+        </label>
+        <p id="movement-error" class="error-text" hidden></p>
+        <button type="submit" class="btn btn-primary btn-block">Registrar movimiento</button>
+      </form>
+      <div class="table-wrap">
+        <table id="movements-table">
+          <thead><tr><th>Fecha</th><th>Prenda</th><th>Tipo</th><th>Cant.</th><th>Motivo</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- GASTOS -->
+    <section id="view-gastos" class="view">
+      <h2>Gastos generales</h2>
+      <form id="expense-form" class="form-card">
+        <div class="grid-2">
+          <label>Categoría
+            <input type="text" id="expense-category" placeholder="Ej: Alquiler, servicios..." />
+          </label>
+          <label>Monto
+            <input type="number" id="expense-amount" step="0.01" required />
+          </label>
+        </div>
+        <label>Descripción
+          <input type="text" id="expense-description" />
+        </label>
+        <button type="submit" class="btn btn-primary btn-block">Registrar gasto</button>
+      </form>
+      <div class="table-wrap">
+        <table id="expenses-table">
+          <thead><tr><th>Fecha</th><th>Categoría</th><th>Descripción</th><th>Monto</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- CUENTAS CORRIENTES -->
+    <section id="view-cc" class="view">
+      <div class="view-header-row">
+        <h2>Cuentas corrientes</h2>
+        <button id="new-client-btn" class="btn btn-primary btn-sm">+ Clienta</button>
+      </div>
+      <div class="table-wrap">
+        <table id="clients-table">
+          <thead><tr><th>Clienta</th><th>Teléfono</th><th>Saldo</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- FICHA DE CLIENTA -->
+    <section id="view-cc-detail" class="view">
+      <button id="cc-detail-back" class="btn btn-ghost btn-sm">&larr; Volver</button>
+      <h2 id="cc-detail-name"></h2>
+      <p>Saldo pendiente: <strong id="cc-detail-balance"></strong></p>
+      <form id="cc-payment-form" class="form-card">
+        <div class="grid-2">
+          <label>Monto del pago
+            <input type="number" id="cc-payment-amount" step="0.01" required />
+          </label>
+          <label>Medio de pago
+            <select id="cc-payment-method">
+              <option value="efectivo">Efectivo</option>
+              <option value="debito">Tarjeta débito</option>
+              <option value="credito">Tarjeta crédito</option>
+              <option value="transferencia">Transferencia</option>
+            </select>
+          </label>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Registrar pago</button>
+      </form>
+      <div class="table-wrap">
+        <table id="cc-ledger-table">
+          <thead><tr><th>Fecha</th><th>Detalle</th><th>Cargo</th><th>Pago</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- REPORTES -->
+    <section id="view-reportes" class="view">
+      <h2>Reportes</h2>
+      <div class="filters">
+        <label>Desde <input type="date" id="rep-from" /></label>
+        <label>Hasta <input type="date" id="rep-to" /></label>
+        <button id="rep-filter-btn" class="btn btn-secondary btn-sm">Filtrar</button>
+      </div>
+      <div class="cards" id="report-cards"></div>
+      <div class="report-columns">
+        <div class="panel">
+          <h3>Ventas por medio de pago</h3>
+          <table id="report-payment-table"><tbody></tbody></table>
+        </div>
+        <div class="panel">
+          <h3>Prendas más vendidas</h3>
+          <table id="report-top-table"><tbody></tbody></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- USUARIOS -->
+    <section id="view-usuarios" class="view">
+      <div class="view-header-row">
+        <h2>Usuarias</h2>
+        <button id="new-user-btn" class="btn btn-primary btn-sm">+ Usuaria</button>
+      </div>
+      <div class="table-wrap">
+        <table id="users-table">
+          <thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ---------- MODAL genérico ---------- -->
+<div id="modal-backdrop" class="modal-backdrop" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modal-title"></h3>
+      <button id="modal-close" class="btn btn-ghost btn-sm">✕</button>
+    </div>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<script src="/js/app.js"></script>
+</body>
+</html>
