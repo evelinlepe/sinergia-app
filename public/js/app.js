@@ -279,8 +279,16 @@ async function openProductForm(id) {
 }
 
 // ---------- VENTA DIARIA ----------
+function todayStr() {
+  const d = new Date();
+  const tz = d.getTimezoneOffset() * 60000;
+  return new Date(d - tz).toISOString().slice(0, 10);
+}
+
 async function loadVentaView() {
   await refreshProducts();
+  const dateInput = document.getElementById('sale-date');
+  if (!dateInput.value) dateInput.value = todayStr();
   const select = document.getElementById('sale-product');
   select.innerHTML = state.products
     .map((p) => `<option value="${p.id}" data-price="${p.salePrice}" data-stock="${p.stock}">${p.name}${p.size ? ' - ' + p.size : ''}${p.color ? ' - ' + p.color : ''} (stock: ${p.stock})</option>`)
@@ -342,11 +350,14 @@ document.getElementById('sale-form').addEventListener('submit', async (e) => {
     isCuentaCorriente: isCC,
     paymentMethod: document.getElementById('sale-payment').value,
     clientId: isCC ? Number(document.getElementById('sale-client').value) : null,
-    note: document.getElementById('sale-note').value
+    note: document.getElementById('sale-note').value,
+    date: document.getElementById('sale-date').value
   };
   try {
     await api('/api/sales', { method: 'POST', body: payload });
+    const keepDate = document.getElementById('sale-date').value;
     document.getElementById('sale-form').reset();
+    document.getElementById('sale-date').value = keepDate;
     document.getElementById('sale-is-cc').checked = false;
     document.getElementById('sale-payment-wrap').hidden = false;
     document.getElementById('sale-client-wrap').hidden = true;
@@ -401,6 +412,7 @@ function openSaleEditForm(sale) {
         <label>Cantidad <input name="qty" type="number" min="1" value="${sale.qty}" required /></label>
         <label>Precio unitario <input name="unitPrice" type="number" step="0.01" min="0" value="${sale.unitPrice}" required /></label>
       </div>
+      <label>Fecha de la venta <input name="date" type="date" value="${sale.date.slice(0, 10)}" required /></label>
       <div class="grid-2">
         <label>Descuento
           <select name="discountType">

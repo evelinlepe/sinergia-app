@@ -18,6 +18,18 @@ function round2(n) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
+// Convierte una fecha elegida a mano (ej. "2026-08-10") a un ISO válido.
+// Si viene solo la fecha, se fija el mediodía para evitar que, por la zona
+// horaria, la venta termine mostrándose un día antes o después.
+function normalizeDateInput(dateStr) {
+  if (!dateStr) return new Date().toISOString();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    return new Date(dateStr + 'T12:00:00').toISOString();
+  }
+  const d = new Date(dateStr);
+  return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+}
+
 function publicUser(u) {
   return { id: u.id, username: u.username, role: u.role, name: u.name };
 }
@@ -505,7 +517,7 @@ route('POST', '/api/sales', { auth: true }, (ctx) => {
 
   const sale = {
     id: store.nextId(db.sales),
-    date: new Date().toISOString(),
+    date: normalizeDateInput(ctx.body.date),
     employeeId: ctx.user.id,
     employeeName: ctx.user.name,
     productId: product.id,
@@ -568,9 +580,13 @@ route('PUT', '/api/sales/:id', { owner: true }, (ctx) => {
   sale.total = round2(Math.max(0, price * newQty - discountAmt));
   if (ctx.body.paymentMethod) sale.paymentMethod = ctx.body.paymentMethod;
   if (ctx.body.note !== undefined) sale.note = ctx.body.note;
+  if (ctx.body.date) sale.date = normalizeDateInput(ctx.body.date);
 
   const charge = db.ccCharges.find((c) => c.saleId === sale.id);
-  if (charge) charge.amount = sale.total;
+  if (charge) {
+    charge.amount = sale.total;
+    charge.date = sale.date;
+  }
 
   persist();
   sendJson(ctx.res, 200, sale);
