@@ -56,18 +56,11 @@
     <!-- VENTA DIARIA -->
     <section id="view-venta" class="view">
       <h2>Registrar venta</h2>
-      <form id="sale-form" class="form-card">
-        <label>Prenda
-          <select id="sale-product" required></select>
-        </label>
-        <div class="grid-2">
-          <label>Cantidad
-            <input type="number" id="sale-qty" value="1" min="1" required />
-          </label>
-          <label>Precio unitario
-            <input type="number" id="sale-price" step="0.01" required />
-          </label>
-        </div>
+      <form id="sale-form" class="form-card sale-form-wide">
+        <label>Prendas de esta venta</label>
+        <div id="sale-items" class="sale-items"></div>
+        <button type="button" id="sale-add-item-btn" class="btn btn-secondary btn-sm sale-add-item-btn">+ Agregar prenda</button>
+
         <label>Fecha de la venta
           <input type="date" id="sale-date" required />
         </label>
