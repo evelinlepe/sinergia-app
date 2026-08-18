@@ -285,15 +285,87 @@ function todayStr() {
   return new Date(d - tz).toISOString().slice(0, 10);
 }
 
+let saleItemRowId = 0;
+
+function saleProductOptionsHtml() {
+  return state.products
+    .map((p) => `<option value="${p.id}" data-price="${p.salePrice}" data-stock="${p.stock}">${p.name}${p.size ? ' - ' + p.size : ''}${p.color ? ' - ' + p.color : ''} (stock: ${p.stock})</option>`)
+    .join('');
+}
+
+function addSaleItemRow() {
+  const container = document.getElementById('sale-items');
+  const rowId = ++saleItemRowId;
+  const row = el(`
+    <div class="sale-item-row" data-row-id="${rowId}">
+      <select class="sale-item-product">${saleProductOptionsHtml()}</select>
+      <input type="number" class="sale-item-qty" min="1" value="1" />
+      <input type="number" class="sale-item-price" step="0.01" />
+      <span class="sale-item-subtotal">$0</span>
+      <button type="button" class="btn btn-ghost btn-sm sale-item-remove" title="Quitar prenda">✕</button>
+    </div>
+  `);
+  container.appendChild(row);
+  const select = row.querySelector('.sale-item-product');
+  const priceInput = row.querySelector('.sale-item-price');
+  const opt = select.options[select.selectedIndex];
+  priceInput.value = opt ? opt.dataset.price : 0;
+  updateSaleRowSubtotal(row);
+  updateSaleRemoveButtonsState();
+  return row;
+}
+
+function updateSaleRemoveButtonsState() {
+  const rows = document.querySelectorAll('#sale-items .sale-item-row');
+  rows.forEach((r) => {
+    r.querySelector('.sale-item-remove').disabled = rows.length <= 1;
+  });
+}
+
+function updateSaleRowSubtotal(row) {
+  const qty = Number(row.querySelector('.sale-item-qty').value) || 0;
+  const price = Number(row.querySelector('.sale-item-price').value) || 0;
+  row.querySelector('.sale-item-subtotal').textContent = money(qty * price);
+}
+
+document.getElementById('sale-add-item-btn').addEventListener('click', () => addSaleItemRow());
+
+document.getElementById('sale-items').addEventListener('change', (e) => {
+  if (e.target.classList.contains('sale-item-product')) {
+    const row = e.target.closest('.sale-item-row');
+    const opt = e.target.options[e.target.selectedIndex];
+    row.querySelector('.sale-item-price').value = opt ? opt.dataset.price : 0;
+    updateSaleRowSubtotal(row);
+    updateSaleTotalPreview();
+  }
+});
+
+document.getElementById('sale-items').addEventListener('input', (e) => {
+  if (e.target.classList.contains('sale-item-qty') || e.target.classList.contains('sale-item-price')) {
+    const row = e.target.closest('.sale-item-row');
+    updateSaleRowSubtotal(row);
+    updateSaleTotalPreview();
+  }
+});
+
+document.getElementById('sale-items').addEventListener('click', (e) => {
+  if (e.target.classList.contains('sale-item-remove')) {
+    const rows = document.querySelectorAll('#sale-items .sale-item-row');
+    if (rows.length <= 1) return;
+    e.target.closest('.sale-item-row').remove();
+    updateSaleRemoveButtonsState();
+    updateSaleTotalPreview();
+  }
+});
+
 async function loadVentaView() {
   await refreshProducts();
   const dateInput = document.getElementById('sale-date');
   if (!dateInput.value) dateInput.value = todayStr();
-  const select = document.getElementById('sale-product');
-  select.innerHTML = state.products
-    .map((p) => `<option value="${p.id}" data-price="${p.salePrice}" data-stock="${p.stock}">${p.name}${p.size ? ' - ' + p.size : ''}${p.color ? ' - ' + p.color : ''} (stock: ${p.stock})</option>`)
-    .join('');
-  updateSalePriceFromProduct();
+
+  document.getElementById('sale-items').innerHTML = '';
+  saleItemRowId = 0;
+  addSaleItemRow();
 
   state.clients = await api('/api/clients');
   const clientSelect = document.getElementById('sale-client');
@@ -302,30 +374,23 @@ async function loadVentaView() {
   updateSaleTotalPreview();
 }
 
-document.getElementById('sale-product').addEventListener('change', () => {
-  updateSalePriceFromProduct();
-  updateSaleTotalPreview();
-});
-
-function updateSalePriceFromProduct() {
-  const select = document.getElementById('sale-product');
-  const opt = select.options[select.selectedIndex];
-  if (opt) document.getElementById('sale-price').value = opt.dataset.price;
-}
-
-['sale-qty', 'sale-price', 'sale-discount-type', 'sale-discount-value'].forEach((id) => {
+['sale-discount-type', 'sale-discount-value'].forEach((id) => {
   document.getElementById(id).addEventListener('input', updateSaleTotalPreview);
 });
 
 function updateSaleTotalPreview() {
-  const qty = Number(document.getElementById('sale-qty').value) || 0;
-  const price = Number(document.getElementById('sale-price').value) || 0;
+  let subtotal = 0;
+  document.querySelectorAll('#sale-items .sale-item-row').forEach((row) => {
+    const qty = Number(row.querySelector('.sale-item-qty').value) || 0;
+    const price = Number(row.querySelector('.sale-item-price').value) || 0;
+    subtotal += qty * price;
+  });
   const discType = document.getElementById('sale-discount-type').value;
   const discVal = Number(document.getElementById('sale-discount-value').value) || 0;
   let discAmt = 0;
-  if (discType === 'percent') discAmt = (price * qty * discVal) / 100;
+  if (discType === 'percent') discAmt = (subtotal * discVal) / 100;
   else if (discType === 'amount') discAmt = discVal;
-  const total = Math.max(0, price * qty - discAmt);
+  const total = Math.max(0, subtotal - discAmt);
   document.getElementById('sale-total-preview').textContent = money(total);
 }
 
@@ -341,10 +406,21 @@ document.getElementById('sale-form').addEventListener('submit', async (e) => {
   const errEl = document.getElementById('sale-error');
   errEl.hidden = true;
   const isCC = document.getElementById('sale-is-cc').checked;
+
+  const items = Array.from(document.querySelectorAll('#sale-items .sale-item-row')).map((row) => ({
+    productId: Number(row.querySelector('.sale-item-product').value),
+    qty: Number(row.querySelector('.sale-item-qty').value),
+    unitPrice: Number(row.querySelector('.sale-item-price').value)
+  }));
+
+  if (items.length === 0 || items.some((it) => !it.productId || !it.qty || it.qty <= 0)) {
+    errEl.textContent = 'Revisá que todas las prendas tengan cantidad y precio cargados.';
+    errEl.hidden = false;
+    return;
+  }
+
   const payload = {
-    productId: Number(document.getElementById('sale-product').value),
-    qty: Number(document.getElementById('sale-qty').value),
-    unitPrice: Number(document.getElementById('sale-price').value),
+    items,
     discountType: document.getElementById('sale-discount-type').value,
     discountValue: Number(document.getElementById('sale-discount-value').value) || 0,
     isCuentaCorriente: isCC,
@@ -354,7 +430,7 @@ document.getElementById('sale-form').addEventListener('submit', async (e) => {
     date: document.getElementById('sale-date').value
   };
   try {
-    await api('/api/sales', { method: 'POST', body: payload });
+    await api('/api/sales/batch', { method: 'POST', body: payload });
     const keepDate = document.getElementById('sale-date').value;
     document.getElementById('sale-form').reset();
     document.getElementById('sale-date').value = keepDate;
@@ -362,7 +438,7 @@ document.getElementById('sale-form').addEventListener('submit', async (e) => {
     document.getElementById('sale-payment-wrap').hidden = false;
     document.getElementById('sale-client-wrap').hidden = true;
     await loadVentaView();
-    alert('Venta registrada ✔');
+    alert(`Venta registrada ✔ (${items.length} prenda${items.length > 1 ? 's' : ''})`);
   } catch (err) {
     errEl.textContent = err.message;
     errEl.hidden = false;
@@ -376,20 +452,43 @@ async function loadHistorial(params = {}) {
   const isOwner = state.user.role === 'duena';
   const tbody = document.querySelector('#sales-table tbody');
   tbody.innerHTML = '';
-  sales.forEach((s) => {
-    const row = el(`<tr>
-      <td>${fmtDate(s.date)}</td>
-      <td>${s.productName}</td>
-      <td>${s.qty}</td>
-      <td>${money(s.unitPrice)}</td>
-      <td>${money(s.discountAmt)}</td>
-      <td>${money(s.total)}</td>
-      <td>${PAYMENT_LABELS[s.paymentMethod] || s.paymentMethod}${s.clientName ? ' (' + s.clientName + ')' : ''}</td>
-      <td>${s.employeeName}</td>
-      <td>${isOwner ? `<button class="btn btn-ghost btn-sm" data-edit="${s.id}">Editar</button> <button class="btn btn-danger btn-sm" data-del="${s.id}">Borrar</button>` : ''}</td>
-    </tr>`);
-    tbody.appendChild(row);
-  });
+
+  // Las prendas cargadas juntas en una misma venta comparten groupId: se
+  // muestran agrupadas (fecha/pago/vendedora una sola vez) con un renglón
+  // de total al final del grupo.
+  let i = 0;
+  while (i < sales.length) {
+    const group = [sales[i]];
+    while (i + 1 < sales.length && sales[i + 1].groupId && sales[i + 1].groupId === sales[i].groupId) {
+      group.push(sales[++i]);
+    }
+    i++;
+
+    group.forEach((s, idx) => {
+      const row = el(`<tr class="${group.length > 1 ? 'grouped-row' : ''}">
+        <td>${idx === 0 ? fmtDate(s.date) : ''}</td>
+        <td>${s.productName}</td>
+        <td>${s.qty}</td>
+        <td>${money(s.unitPrice)}</td>
+        <td>${money(s.discountAmt)}</td>
+        <td>${money(s.total)}</td>
+        <td>${idx === 0 ? (PAYMENT_LABELS[s.paymentMethod] || s.paymentMethod) + (s.clientName ? ' (' + s.clientName + ')' : '') : ''}</td>
+        <td>${idx === 0 ? s.employeeName : ''}</td>
+        <td>${isOwner ? `<button class="btn btn-ghost btn-sm" data-edit="${s.id}">Editar</button> <button class="btn btn-danger btn-sm" data-del="${s.id}">Borrar</button>` : ''}</td>
+      </tr>`);
+      tbody.appendChild(row);
+    });
+
+    if (group.length > 1) {
+      const groupTotal = group.reduce((s, x) => s + x.total, 0);
+      tbody.appendChild(el(`<tr class="group-total-row">
+        <td colspan="5" style="text-align:right;">Total de la venta (${group.length} prendas):</td>
+        <td><strong>${money(groupTotal)}</strong></td>
+        <td colspan="3"></td>
+      </tr>`));
+    }
+  }
+
   if (isOwner) {
     tbody.querySelectorAll('[data-del]').forEach((b) =>
       b.addEventListener('click', async () => {
