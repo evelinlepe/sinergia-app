@@ -173,30 +173,6 @@ route('GET', '/api/me', (ctx) => {
   sendJson(ctx.res, 200, { user: ctx.user || null });
 });
 
-// Ruta de emergencia temporal: resetea la contraseña de "duena" a sinergia2026
-// visitando esta URL con el secreto correcto. SACAR esta ruta una vez resuelto
-// el problema de login (queda pendiente en una próxima actualización).
-route('GET', '/api/admin/reset-duena', (ctx) => {
-  const secret = ctx.query.get('secret');
-  if (secret !== 'sinergia-emergencia-83f2ka1') {
-    return sendJson(ctx.res, 403, { error: 'No autorizado' });
-  }
-  const u = db.users.find((x) => x.username === 'duena');
-  if (!u) {
-    return sendJson(ctx.res, 404, { error: 'No existe el usuario duena' });
-  }
-  u.passwordHash = hashPassword('sinergia2026');
-  persist();
-  sendJson(ctx.res, 200, {
-    ok: true,
-    mensaje: 'Contraseña de duena reseteada a sinergia2026',
-    usuarios: db.users.map((x) => ({ username: x.username, role: x.role })),
-    productos: db.products.length,
-    ventas: db.sales.length,
-    clientes: db.clients.length
-  });
-});
-
 route('POST', '/api/change-password', { auth: true }, (ctx) => {
   const { currentPassword, newPassword } = ctx.body || {};
   const user = db.users.find((u) => u.id === ctx.user.id);
