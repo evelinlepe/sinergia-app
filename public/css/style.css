@@ -182,6 +182,61 @@ input:focus, select:focus { outline: none; border-color: var(--pink-dark); }
 .sale-total-row { font-size: 18px; margin: 10px 0 16px; }
 .sale-total-row strong { color: var(--pink-dark); }
 
+.sale-form-wide { max-width: 640px; }
+
+.sale-items { margin-top: 6px; }
+
+.sale-item-row {
+  display: grid;
+  grid-template-columns: 2fr 60px 90px 80px 32px;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed #e6ddd2;
+}
+
+.sale-item-row select,
+.sale-item-row input { margin-top: 0; }
+
+.sale-item-subtotal {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--pink-dark);
+  text-align: right;
+}
+
+.sale-item-remove {
+  padding: 6px 8px;
+  line-height: 1;
+}
+
+.sale-add-item-btn { margin-bottom: 16px; }
+
+@media (max-width: 600px) {
+  .sale-item-row {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas: "product product" "qty price" "subtotal remove";
+    border-bottom: 1px solid #e6ddd2;
+    padding-bottom: 12px;
+    margin-bottom: 12px;
+  }
+  .sale-item-row select { grid-area: product; }
+  .sale-item-row .sale-item-qty { grid-area: qty; }
+  .sale-item-row .sale-item-price { grid-area: price; }
+  .sale-item-row .sale-item-subtotal { grid-area: subtotal; align-self: center; }
+  .sale-item-row .sale-item-remove { grid-area: remove; justify-self: end; }
+}
+
+tr.grouped-row td { border-bottom: none; padding-top: 4px; padding-bottom: 4px; }
+tr.group-total-row td {
+  background: var(--beige-light);
+  font-size: 13px;
+  border-bottom: 2px solid var(--pink);
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
 .filters { display: flex; gap: 12px; align-items: end; margin-bottom: 12px; flex-wrap: wrap; }
 .filters label { font-size: 12.5px; color: var(--gray); font-weight: 600; }
 
