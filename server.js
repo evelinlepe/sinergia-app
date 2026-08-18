@@ -549,6 +549,103 @@ route('POST', '/api/sales', { auth: true }, (ctx) => {
   sendJson(ctx.res, 201, sale);
 });
 
+// Venta con varias prendas al mismo tiempo (misma clienta, un solo descuento
+// y un solo medio de pago para toda la compra). Crea una fila de venta por
+// cada prenda, todas con el mismo `groupId`, para que el historial y las
+// cuentas corrientes las puedan mostrar agrupadas o tratarlas individualmente
+// (por ejemplo, para editar o borrar una sola prenda de la venta).
+route('POST', '/api/sales/batch', { auth: true }, (ctx) => {
+  const { items, discountType, discountValue, paymentMethod, isCuentaCorriente, clientId, note, date } = ctx.body || {};
+  if (!Array.isArray(items) || items.length === 0) {
+    return sendJson(ctx.res, 400, { error: 'Agregá al menos una prenda a la venta' });
+  }
+
+  const resolved = [];
+  for (const it of items) {
+    const product = db.products.find((p) => p.id === Number(it.productId));
+    if (!product) return sendJson(ctx.res, 400, { error: 'Una de las prendas elegidas ya no existe' });
+    const quantity = Number(it.qty) || 1;
+    if (quantity <= 0) return sendJson(ctx.res, 400, { error: `Cantidad inválida para ${product.name}` });
+    if (product.stock < quantity) {
+      return sendJson(ctx.res, 400, { error: `Stock insuficiente. Quedan ${product.stock} unidades de ${product.name}.` });
+    }
+    const price = it.unitPrice != null && it.unitPrice !== '' ? Number(it.unitPrice) : product.salePrice;
+    resolved.push({ product, quantity, price, subtotal: round2(price * quantity) });
+  }
+
+  let client = null;
+  if (isCuentaCorriente) {
+    if (!clientId) return sendJson(ctx.res, 400, { error: 'Elegí una clienta para la cuenta corriente' });
+    client = findOr404(ctx, db.clients, clientId, 'Clienta');
+    if (!client) return;
+  }
+
+  const grandSubtotal = round2(resolved.reduce((s, r) => s + r.subtotal, 0));
+  let totalDiscount = 0;
+  if (discountType === 'percent') {
+    totalDiscount = round2((grandSubtotal * (Number(discountValue) || 0)) / 100);
+  } else if (discountType === 'amount') {
+    totalDiscount = round2(Number(discountValue) || 0);
+  }
+
+  const saleDate = normalizeDateInput(date);
+  const createdSales = [];
+  let groupId = null;
+  let discountAssigned = 0;
+
+  resolved.forEach((r, idx) => {
+    let itemDiscount;
+    if (idx === resolved.length - 1) {
+      itemDiscount = round2(totalDiscount - discountAssigned); // el último absorbe el redondeo
+    } else {
+      const share = grandSubtotal > 0 ? r.subtotal / grandSubtotal : 0;
+      itemDiscount = round2(totalDiscount * share);
+      discountAssigned = round2(discountAssigned + itemDiscount);
+    }
+    const itemTotal = round2(Math.max(0, r.subtotal - itemDiscount));
+
+    r.product.stock -= r.quantity;
+
+    const saleId = store.nextId(db.sales);
+    if (groupId === null) groupId = saleId;
+
+    const sale = {
+      id: saleId,
+      groupId,
+      date: saleDate,
+      employeeId: ctx.user.id,
+      employeeName: ctx.user.name,
+      productId: r.product.id,
+      productName: r.product.name,
+      qty: r.quantity,
+      unitPrice: r.price,
+      discountAmt: itemDiscount,
+      total: itemTotal,
+      paymentMethod: isCuentaCorriente ? 'cuenta_corriente' : paymentMethod || 'efectivo',
+      clientId: client ? client.id : null,
+      clientName: client ? client.name : null,
+      note: note || ''
+    };
+    db.sales.push(sale);
+    createdSales.push(sale);
+
+    if (isCuentaCorriente) {
+      db.ccCharges.push({
+        id: store.nextId(db.ccCharges),
+        clientId: client.id,
+        date: sale.date,
+        productId: r.product.id,
+        productName: r.product.name,
+        amount: itemTotal,
+        saleId: sale.id
+      });
+    }
+  });
+
+  persist();
+  sendJson(ctx.res, 201, { sales: createdSales, groupId });
+});
+
 route('PUT', '/api/sales/:id', { owner: true }, (ctx) => {
   const sale = findOr404(ctx, db.sales, ctx.params.id, 'Venta');
   if (!sale) return;
@@ -614,7 +711,7 @@ route('GET', '/api/dashboard', { auth: true }, (ctx) => {
   const lowStock = db.products.filter((p) => p.stock <= p.lowStockThreshold);
   const base = {
     todayTotal: round2(todaySales.reduce((s, x) => s + x.total, 0)),
-    todayCount: todaySales.length,
+    todayCount: new Set(todaySales.map((s) => s.groupId || s.id)).size,
     lowStock: lowStock.map((p) => sanitizeProduct(p, ctx.user.role))
   };
   if (ctx.user.role === 'duena') {
@@ -674,7 +771,7 @@ route('GET', '/api/reports/summary', { owner: true }, (ctx) => {
     porMedioPago,
     topProductos,
     pendingCC,
-    cantidadVentas: sales.length
+    cantidadVentas: new Set(sales.map((s) => s.groupId || s.id)).size
   });
 });
 
