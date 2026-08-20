@@ -293,6 +293,50 @@ route('POST', '/api/products', { owner: true }, (ctx) => {
   sendJson(ctx.res, 201, product);
 });
 
+// Carga múltiple: crea varias prendas de una sola vez que comparten nombre
+// base, categoría, color, precios y proveedor, pero cada una con su propio
+// talle/detalle y su propio stock. Sirve tanto para cargar varios talles de
+// la misma prenda (ej: Musculosa Blagnac negra en S, M, L) como para las
+// piezas de un conjunto (ej: Top + Campera + Legging) que después se venden
+// y se descuentan del stock por separado.
+route('POST', '/api/products/batch', { owner: true }, (ctx) => {
+  const { name, category, color, costPrice, salePrice, supplierId, lowStockThreshold, variants } = ctx.body || {};
+  if (!name) return sendJson(ctx.res, 400, { error: 'Falta el nombre base de la prenda' });
+  if (!Array.isArray(variants) || variants.length === 0) {
+    return sendJson(ctx.res, 400, { error: 'Agregá al menos un talle o pieza' });
+  }
+  const baseSalePrice = salePrice != null && salePrice !== '' ? Number(salePrice) : null;
+  for (const v of variants) {
+    const hasOwnPrice = v.salePrice != null && v.salePrice !== '';
+    if (baseSalePrice == null && !hasOwnPrice) {
+      return sendJson(ctx.res, 400, { error: 'Falta el precio de venta (general o por talle/pieza)' });
+    }
+  }
+
+  const created = [];
+  for (const v of variants) {
+    const detail = (v.detail || '').trim();
+    const product = {
+      id: store.nextId(db.products),
+      name: detail ? `${name} - ${detail}` : name,
+      category: category || '',
+      size: detail,
+      color: color || '',
+      costPrice: Number(costPrice) || 0,
+      salePrice: v.salePrice != null && v.salePrice !== '' ? Number(v.salePrice) : baseSalePrice,
+      stock: Number(v.stock) || 0,
+      lowStockThreshold: Number(lowStockThreshold) || 3,
+      supplierId: supplierId ? Number(supplierId) : null,
+      setName: name,
+      createdAt: new Date().toISOString()
+    };
+    db.products.push(product);
+    created.push(product);
+  }
+  persist();
+  sendJson(ctx.res, 201, created);
+});
+
 route('PUT', '/api/products/:id', { owner: true }, (ctx) => {
   const product = findOr404(ctx, db.products, ctx.params.id, 'Producto');
   if (!product) return;
