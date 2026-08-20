@@ -183,22 +183,61 @@ async function loadStock() {
   await refreshProducts();
   const isOwner = state.user.role === 'duena';
   document.getElementById('new-product-btn').hidden = !isOwner;
+  document.getElementById('new-product-batch-btn').hidden = !isOwner;
+  document.getElementById('stock-filter-supplier-wrap').hidden = !isOwner;
 
   const theadRow = document.getElementById('products-thead-row');
   theadRow.innerHTML = isOwner
     ? '<th>Prenda</th><th>Categoría</th><th>Talle</th><th>Color</th><th>Costo</th><th>Venta</th><th>Stock</th><th>Proveedor</th><th></th>'
     : '<th>Prenda</th><th>Categoría</th><th>Talle</th><th>Color</th><th>Venta</th><th>Stock</th>';
 
+  const categories = Array.from(new Set(state.products.map((p) => p.category).filter(Boolean))).sort();
+  const catSelect = document.getElementById('stock-filter-category');
+  const prevCat = catSelect.value;
+  catSelect.innerHTML = '<option value="">Todas las categorías</option>' + categories.map((c) => `<option value="${c}">${c}</option>`).join('');
+  catSelect.value = categories.includes(prevCat) ? prevCat : '';
+
+  if (isOwner) {
+    if (state.suppliers.length === 0) state.suppliers = await api('/api/suppliers');
+    const supSelect = document.getElementById('stock-filter-supplier');
+    const prevSup = supSelect.value;
+    supSelect.innerHTML = '<option value="">Todos los proveedores</option>' + state.suppliers.map((s) => `<option value="${s.id}">${s.name}</option>`).join('');
+    if (Array.from(supSelect.options).some((o) => o.value === prevSup)) supSelect.value = prevSup;
+  }
+
+  renderProductsTable();
+}
+
+function renderProductsTable() {
+  const isOwner = state.user.role === 'duena';
+  const search = document.getElementById('stock-search').value.trim().toLowerCase();
+  const category = document.getElementById('stock-filter-category').value;
+  const supplierId = isOwner ? document.getElementById('stock-filter-supplier').value : '';
+
+  let list = state.products;
+  if (search) list = list.filter((p) => p.name.toLowerCase().includes(search));
+  if (category) list = list.filter((p) => p.category === category);
+  if (supplierId) list = list.filter((p) => String(p.supplierId || '') === supplierId);
+
   const tbody = document.querySelector('#products-table tbody');
   tbody.innerHTML = '';
-  state.products.forEach((p) => {
+
+  if (list.length === 0) {
+    tbody.appendChild(el(`<tr><td colspan="${isOwner ? 9 : 6}" style="text-align:center;color:var(--gray);">No hay prendas que coincidan con la búsqueda.</td></tr>`));
+    return;
+  }
+
+  list.forEach((p) => {
     const stockBadge = p.stock <= p.lowStockThreshold
       ? `<span class="badge badge-low">${p.stock}</span>`
       : `<span class="badge badge-ok">${p.stock}</span>`;
     const supplierName = state.suppliers.find((s) => s.id === p.supplierId)?.name || '—';
+    const nameCell = p.setName && p.setName !== p.name
+      ? `${p.name}<br><small style="color:var(--gray);">${p.setName}</small>`
+      : p.name;
     const row = isOwner
       ? `<tr>
-          <td>${p.name}</td><td>${p.category || '—'}</td><td>${p.size || '—'}</td><td>${p.color || '—'}</td>
+          <td>${nameCell}</td><td>${p.category || '—'}</td><td>${p.size || '—'}</td><td>${p.color || '—'}</td>
           <td>${money(p.costPrice)}</td><td>${money(p.salePrice)}</td><td>${stockBadge}</td><td>${supplierName}</td>
           <td>
             <button class="btn btn-ghost btn-sm" data-edit="${p.id}">Editar</button>
@@ -206,7 +245,7 @@ async function loadStock() {
           </td>
         </tr>`
       : `<tr>
-          <td>${p.name}</td><td>${p.category || '—'}</td><td>${p.size || '—'}</td><td>${p.color || '—'}</td>
+          <td>${nameCell}</td><td>${p.category || '—'}</td><td>${p.size || '—'}</td><td>${p.color || '—'}</td>
           <td>${money(p.salePrice)}</td><td>${stockBadge}</td>
         </tr>`;
     tbody.appendChild(el(row));
@@ -224,7 +263,111 @@ async function loadStock() {
   }
 }
 
+document.getElementById('stock-search').addEventListener('input', renderProductsTable);
+document.getElementById('stock-filter-category').addEventListener('change', renderProductsTable);
+document.getElementById('stock-filter-supplier').addEventListener('change', renderProductsTable);
+
 document.getElementById('new-product-btn').addEventListener('click', () => openProductForm(null));
+document.getElementById('new-product-batch-btn').addEventListener('click', () => openProductBatchForm());
+
+let batchRowId = 0;
+
+function addBatchVariantRow(container) {
+  ++batchRowId;
+  const row = el(`
+    <div class="batch-variant-row">
+      <input type="text" class="batch-detail" placeholder="Talle o detalle (ej: S, M, Top, Campera)" />
+      <input type="number" class="batch-stock" min="0" value="1" placeholder="Cant." />
+      <input type="number" class="batch-price" step="0.01" placeholder="Precio (opcional)" />
+      <button type="button" class="btn btn-ghost btn-sm batch-variant-remove" title="Quitar">✕</button>
+    </div>
+  `);
+  container.appendChild(row);
+  updateBatchRemoveButtonsState(container);
+}
+
+function updateBatchRemoveButtonsState(container) {
+  const rows = container.querySelectorAll('.batch-variant-row');
+  rows.forEach((r) => { r.querySelector('.batch-variant-remove').disabled = rows.length <= 1; });
+}
+
+async function openProductBatchForm() {
+  if (state.suppliers.length === 0) state.suppliers = await api('/api/suppliers');
+  const supplierOptions = state.suppliers.map((s) => `<option value="${s.id}">${s.name}</option>`).join('');
+
+  const form = el(`
+    <form class="form-card" style="max-width:none;box-shadow:none;padding:0;">
+      <p style="margin-top:0;color:var(--gray);font-size:13px;">
+        Usalo para cargar de una vez varios talles de la misma prenda (ej: Musculosa Blagnac negra en talles S, M, L)
+        o las piezas de un conjunto (ej: Top + Campera + Legging), que después vas a poder vender por separado igual que cualquier otra prenda.
+      </p>
+      <label>Nombre base <input name="name" required placeholder="Ej: Musculosa Blagnac negra" /></label>
+      <div class="grid-2">
+        <label>Categoría <input name="category" /></label>
+        <label>Color <input name="color" /></label>
+      </div>
+      <div class="grid-2">
+        <label>Precio costo <input name="costPrice" type="number" step="0.01" min="0" /></label>
+        <label>Precio venta (por defecto) <input name="salePrice" type="number" step="0.01" min="0" /></label>
+      </div>
+      <div class="grid-2">
+        <label>Alerta stock bajo <input name="lowStockThreshold" type="number" min="0" value="3" /></label>
+        <label>Proveedor <select name="supplierId"><option value="">—</option>${supplierOptions}</select></label>
+      </div>
+      <label>Talles / piezas</label>
+      <div id="batch-variants"></div>
+      <button type="button" id="batch-add-variant-btn" class="btn btn-secondary btn-sm sale-add-item-btn">+ Agregar talle o pieza</button>
+      <p class="error-text" hidden></p>
+      <button type="submit" class="btn btn-primary btn-block">Crear prendas</button>
+    </form>
+  `);
+
+  const variantsContainer = form.querySelector('#batch-variants');
+  batchRowId = 0;
+  addBatchVariantRow(variantsContainer);
+  addBatchVariantRow(variantsContainer);
+
+  form.querySelector('#batch-add-variant-btn').addEventListener('click', () => addBatchVariantRow(variantsContainer));
+  variantsContainer.addEventListener('click', (e) => {
+    if (e.target.classList.contains('batch-variant-remove')) {
+      const rows = variantsContainer.querySelectorAll('.batch-variant-row');
+      if (rows.length <= 1) return;
+      e.target.closest('.batch-variant-row').remove();
+      updateBatchRemoveButtonsState(variantsContainer);
+    }
+  });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(form);
+    const entries = Object.fromEntries(fd.entries());
+    const base = {
+      name: entries.name,
+      category: entries.category,
+      color: entries.color,
+      costPrice: entries.costPrice,
+      salePrice: entries.salePrice,
+      lowStockThreshold: entries.lowStockThreshold,
+      supplierId: entries.supplierId
+    };
+    const variants = Array.from(variantsContainer.querySelectorAll('.batch-variant-row')).map((row) => ({
+      detail: row.querySelector('.batch-detail').value.trim(),
+      stock: Number(row.querySelector('.batch-stock').value) || 0,
+      salePrice: row.querySelector('.batch-price').value
+    }));
+    const errEl = form.querySelector('.error-text');
+    try {
+      await api('/api/products/batch', { method: 'POST', body: { ...base, variants } });
+      closeModal();
+      loadStock();
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.hidden = false;
+    }
+  });
+
+  showModal('Carga múltiple de prendas', form);
+}
 
 async function openProductForm(id) {
   if (state.suppliers.length === 0 && state.user.role === 'duena') {
@@ -607,6 +750,13 @@ async function loadMovimientos() {
   await refreshProducts();
   const select = document.getElementById('mov-product');
   select.innerHTML = state.products.map((p) => `<option value="${p.id}">${p.name}${p.size ? ' - ' + p.size : ''}</option>`).join('');
+
+  const totalCosto = state.products.reduce((s, p) => s + (Number(p.costPrice) || 0) * (Number(p.stock) || 0), 0);
+  const totalVenta = state.products.reduce((s, p) => s + (Number(p.salePrice) || 0) * (Number(p.stock) || 0), 0);
+  const valueCards = document.getElementById('stock-value-cards');
+  valueCards.innerHTML = '';
+  valueCards.appendChild(cardEl('Stock sin vender (a precio costo)', money(totalCosto)));
+  valueCards.appendChild(cardEl('Stock sin vender (a precio de venta)', money(totalVenta)));
 
   const movements = await api('/api/movements');
   const tbody = document.querySelector('#movements-table tbody');
