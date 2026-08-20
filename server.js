@@ -271,7 +271,7 @@ route('GET', '/api/products/low-stock', { auth: true }, (ctx) => {
 });
 
 route('POST', '/api/products', { owner: true }, (ctx) => {
-  const { name, category, size, color, costPrice, salePrice, stock, lowStockThreshold, supplierId } = ctx.body || {};
+  const { name, category, size, piece, color, costPrice, salePrice, stock, lowStockThreshold, supplierId } = ctx.body || {};
   if (!name || salePrice == null || salePrice === '') {
     return sendJson(ctx.res, 400, { error: 'Faltan datos obligatorios (nombre y precio de venta)' });
   }
@@ -280,6 +280,7 @@ route('POST', '/api/products', { owner: true }, (ctx) => {
     name,
     category: category || '',
     size: size || '',
+    piece: piece || '',
     color: color || '',
     costPrice: Number(costPrice) || 0,
     salePrice: Number(salePrice),
@@ -294,33 +295,36 @@ route('POST', '/api/products', { owner: true }, (ctx) => {
 });
 
 // Carga múltiple: crea varias prendas de una sola vez que comparten nombre
-// base, categoría, color, precios y proveedor, pero cada una con su propio
-// talle/detalle y su propio stock. Sirve tanto para cargar varios talles de
-// la misma prenda (ej: Musculosa Blagnac negra en S, M, L) como para las
-// piezas de un conjunto (ej: Top + Campera + Legging) que después se venden
-// y se descuentan del stock por separado.
+// base, categoría, color, precios y proveedor. Cada fila puede tener su
+// propia "pieza" (ej: Top, Campera, Legging) y/o su propio "talle" (ej: S,
+// M, L) de forma independiente, para cubrir tanto varios talles de la misma
+// prenda como las piezas de un conjunto —cada una con sus propios talles si
+// hace falta—, y cada una se vende y descuenta del stock por separado.
 route('POST', '/api/products/batch', { owner: true }, (ctx) => {
   const { name, category, color, costPrice, salePrice, supplierId, lowStockThreshold, variants } = ctx.body || {};
   if (!name) return sendJson(ctx.res, 400, { error: 'Falta el nombre base de la prenda' });
   if (!Array.isArray(variants) || variants.length === 0) {
-    return sendJson(ctx.res, 400, { error: 'Agregá al menos un talle o pieza' });
+    return sendJson(ctx.res, 400, { error: 'Agregá al menos una fila (talle y/o pieza)' });
   }
   const baseSalePrice = salePrice != null && salePrice !== '' ? Number(salePrice) : null;
   for (const v of variants) {
     const hasOwnPrice = v.salePrice != null && v.salePrice !== '';
     if (baseSalePrice == null && !hasOwnPrice) {
-      return sendJson(ctx.res, 400, { error: 'Falta el precio de venta (general o por talle/pieza)' });
+      return sendJson(ctx.res, 400, { error: 'Falta el precio de venta (general o por fila)' });
     }
   }
 
   const created = [];
   for (const v of variants) {
-    const detail = (v.detail || '').trim();
+    const piece = (v.piece || '').trim();
+    const size = (v.size || '').trim();
+    const suffix = [piece, size].filter(Boolean).join(' - ');
     const product = {
       id: store.nextId(db.products),
-      name: detail ? `${name} - ${detail}` : name,
+      name: suffix ? `${name} - ${suffix}` : name,
       category: category || '',
-      size: detail,
+      size,
+      piece,
       color: color || '',
       costPrice: Number(costPrice) || 0,
       salePrice: v.salePrice != null && v.salePrice !== '' ? Number(v.salePrice) : baseSalePrice,
@@ -340,7 +344,7 @@ route('POST', '/api/products/batch', { owner: true }, (ctx) => {
 route('PUT', '/api/products/:id', { owner: true }, (ctx) => {
   const product = findOr404(ctx, db.products, ctx.params.id, 'Producto');
   if (!product) return;
-  const fields = ['name', 'category', 'size', 'color', 'costPrice', 'salePrice', 'stock', 'lowStockThreshold', 'supplierId'];
+  const fields = ['name', 'category', 'size', 'piece', 'color', 'costPrice', 'salePrice', 'stock', 'lowStockThreshold', 'supplierId'];
   for (const f of fields) {
     if (ctx.body[f] !== undefined && ctx.body[f] !== '') {
       product[f] = ['costPrice', 'salePrice', 'stock', 'lowStockThreshold'].includes(f)
