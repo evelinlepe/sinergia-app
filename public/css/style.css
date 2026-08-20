@@ -228,6 +228,29 @@ input:focus, select:focus { outline: none; border-color: var(--pink-dark); }
   .sale-item-row .sale-item-remove { grid-area: remove; justify-self: end; }
 }
 
+.stock-header-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.batch-variant-row {
+  display: grid;
+  grid-template-columns: 2fr 70px 120px 32px;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.batch-variant-row input { margin-top: 0; }
+
+@media (max-width: 600px) {
+  .batch-variant-row {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas: "detail detail" "stock price" "remove remove";
+    margin-bottom: 14px;
+  }
+  .batch-variant-row .batch-detail { grid-area: detail; }
+  .batch-variant-row .batch-stock { grid-area: stock; }
+  .batch-variant-row .batch-price { grid-area: price; }
+  .batch-variant-row .batch-variant-remove { grid-area: remove; justify-self: end; }
+}
+
 tr.grouped-row td { border-bottom: none; padding-top: 4px; padding-bottom: 4px; }
 tr.group-total-row td {
   background: var(--beige-light);
