@@ -230,9 +230,18 @@ input:focus, select:focus { outline: none; border-color: var(--pink-dark); }
 
 .stock-header-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
+.batch-generator {
+  background: var(--beige-light);
+  border: 1px dashed #e6ddd2;
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 16px;
+}
+.batch-generator .grid-2 { margin-bottom: 10px; }
+
 .batch-variant-row {
   display: grid;
-  grid-template-columns: 2fr 70px 120px 32px;
+  grid-template-columns: 1.2fr 0.8fr 70px 120px 32px;
   gap: 8px;
   align-items: center;
   margin-bottom: 8px;
@@ -242,10 +251,11 @@ input:focus, select:focus { outline: none; border-color: var(--pink-dark); }
 @media (max-width: 600px) {
   .batch-variant-row {
     grid-template-columns: 1fr 1fr;
-    grid-template-areas: "detail detail" "stock price" "remove remove";
+    grid-template-areas: "piece size" "stock price" "remove remove";
     margin-bottom: 14px;
   }
-  .batch-variant-row .batch-detail { grid-area: detail; }
+  .batch-variant-row .batch-piece { grid-area: piece; }
+  .batch-variant-row .batch-size { grid-area: size; }
   .batch-variant-row .batch-stock { grid-area: stock; }
   .batch-variant-row .batch-price { grid-area: price; }
   .batch-variant-row .batch-variant-remove { grid-area: remove; justify-self: end; }
