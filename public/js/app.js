@@ -235,9 +235,10 @@ function renderProductsTable() {
     const nameCell = p.setName && p.setName !== p.name
       ? `${p.name}<br><small style="color:var(--gray);">${p.setName}</small>`
       : p.name;
+    const talleCell = p.piece ? (p.size ? `${p.piece} · ${p.size}` : p.piece) : (p.size || '—');
     const row = isOwner
       ? `<tr>
-          <td>${nameCell}</td><td>${p.category || '—'}</td><td>${p.size || '—'}</td><td>${p.color || '—'}</td>
+          <td>${nameCell}</td><td>${p.category || '—'}</td><td>${talleCell}</td><td>${p.color || '—'}</td>
           <td>${money(p.costPrice)}</td><td>${money(p.salePrice)}</td><td>${stockBadge}</td><td>${supplierName}</td>
           <td>
             <button class="btn btn-ghost btn-sm" data-edit="${p.id}">Editar</button>
@@ -245,7 +246,7 @@ function renderProductsTable() {
           </td>
         </tr>`
       : `<tr>
-          <td>${nameCell}</td><td>${p.category || '—'}</td><td>${p.size || '—'}</td><td>${p.color || '—'}</td>
+          <td>${nameCell}</td><td>${p.category || '—'}</td><td>${talleCell}</td><td>${p.color || '—'}</td>
           <td>${money(p.salePrice)}</td><td>${stockBadge}</td>
         </tr>`;
     tbody.appendChild(el(row));
@@ -272,13 +273,14 @@ document.getElementById('new-product-batch-btn').addEventListener('click', () =>
 
 let batchRowId = 0;
 
-function addBatchVariantRow(container) {
+function addBatchVariantRow(container, piece = '', size = '', stock = 1, price = '') {
   ++batchRowId;
   const row = el(`
     <div class="batch-variant-row">
-      <input type="text" class="batch-detail" placeholder="Talle o detalle (ej: S, M, Top, Campera)" />
-      <input type="number" class="batch-stock" min="0" value="1" placeholder="Cant." />
-      <input type="number" class="batch-price" step="0.01" placeholder="Precio (opcional)" />
+      <input type="text" class="batch-piece" placeholder="Pieza (ej: Top)" value="${piece}" />
+      <input type="text" class="batch-size" placeholder="Talle (ej: M)" value="${size}" />
+      <input type="number" class="batch-stock" min="0" value="${stock}" placeholder="Cant." />
+      <input type="number" class="batch-price" step="0.01" placeholder="Precio (opcional)" value="${price}" />
       <button type="button" class="btn btn-ghost btn-sm batch-variant-remove" title="Quitar">✕</button>
     </div>
   `);
@@ -298,8 +300,9 @@ async function openProductBatchForm() {
   const form = el(`
     <form class="form-card" style="max-width:none;box-shadow:none;padding:0;">
       <p style="margin-top:0;color:var(--gray);font-size:13px;">
-        Usalo para cargar de una vez varios talles de la misma prenda (ej: Musculosa Blagnac negra en talles S, M, L)
-        o las piezas de un conjunto (ej: Top + Campera + Legging), que después vas a poder vender por separado igual que cualquier otra prenda.
+        Usalo para cargar de una vez varios talles de la misma prenda, o las piezas de un conjunto
+        (ej: Top + Campera + Legging) —cada una con sus propios talles si hace falta—, que después vas a poder
+        vender por separado igual que cualquier otra prenda.
       </p>
       <label>Nombre base <input name="name" required placeholder="Ej: Musculosa Blagnac negra" /></label>
       <div class="grid-2">
@@ -314,9 +317,24 @@ async function openProductBatchForm() {
         <label>Alerta stock bajo <input name="lowStockThreshold" type="number" min="0" value="3" /></label>
         <label>Proveedor <select name="supplierId"><option value="">—</option>${supplierOptions}</select></label>
       </div>
-      <label>Talles / piezas</label>
+
+      <div class="batch-generator">
+        <label style="margin-bottom:4px;">Generador rápido (opcional)</label>
+        <p style="margin:0 0 8px;color:var(--gray);font-size:12.5px;">
+          Si es un conjunto, escribí las piezas. Si tiene talles, escribilos también — se van a combinar
+          (ej: piezas "Top, Legging" + talles "S, M" genera Top-S, Top-M, Legging-S, Legging-M).
+          Dejá uno de los dos vacío si no aplica.
+        </p>
+        <div class="grid-2">
+          <label>Piezas, separadas por coma <input type="text" id="batch-gen-pieces" placeholder="Ej: Top, Campera, Legging" /></label>
+          <label>Talles, separados por coma <input type="text" id="batch-gen-sizes" placeholder="Ej: S, M, L" /></label>
+        </div>
+        <button type="button" id="batch-generate-btn" class="btn btn-secondary btn-sm">Generar filas</button>
+      </div>
+
+      <label>Prendas a crear (revisá / ajustá cantidad y precio de cada una)</label>
       <div id="batch-variants"></div>
-      <button type="button" id="batch-add-variant-btn" class="btn btn-secondary btn-sm sale-add-item-btn">+ Agregar talle o pieza</button>
+      <button type="button" id="batch-add-variant-btn" class="btn btn-ghost btn-sm">+ Agregar fila manual</button>
       <p class="error-text" hidden></p>
       <button type="submit" class="btn btn-primary btn-block">Crear prendas</button>
     </form>
@@ -325,9 +343,23 @@ async function openProductBatchForm() {
   const variantsContainer = form.querySelector('#batch-variants');
   batchRowId = 0;
   addBatchVariantRow(variantsContainer);
-  addBatchVariantRow(variantsContainer);
 
   form.querySelector('#batch-add-variant-btn').addEventListener('click', () => addBatchVariantRow(variantsContainer));
+  form.querySelector('#batch-generate-btn').addEventListener('click', () => {
+    const pieces = form.querySelector('#batch-gen-pieces').value.split(',').map((s) => s.trim()).filter(Boolean);
+    const sizes = form.querySelector('#batch-gen-sizes').value.split(',').map((s) => s.trim()).filter(Boolean);
+    let combos = [['', '']];
+    if (pieces.length && sizes.length) {
+      combos = [];
+      pieces.forEach((p) => sizes.forEach((s) => combos.push([p, s])));
+    } else if (pieces.length) {
+      combos = pieces.map((p) => [p, '']);
+    } else if (sizes.length) {
+      combos = sizes.map((s) => ['', s]);
+    }
+    variantsContainer.innerHTML = '';
+    combos.forEach(([p, s]) => addBatchVariantRow(variantsContainer, p, s));
+  });
   variantsContainer.addEventListener('click', (e) => {
     if (e.target.classList.contains('batch-variant-remove')) {
       const rows = variantsContainer.querySelectorAll('.batch-variant-row');
@@ -351,7 +383,8 @@ async function openProductBatchForm() {
       supplierId: entries.supplierId
     };
     const variants = Array.from(variantsContainer.querySelectorAll('.batch-variant-row')).map((row) => ({
-      detail: row.querySelector('.batch-detail').value.trim(),
+      piece: row.querySelector('.batch-piece').value.trim(),
+      size: row.querySelector('.batch-size').value.trim(),
       stock: Number(row.querySelector('.batch-stock').value) || 0,
       salePrice: row.querySelector('.batch-price').value
     }));
@@ -381,12 +414,13 @@ async function openProductForm(id) {
       <label>Nombre <input name="name" required value="${p?.name || ''}" /></label>
       <div class="grid-2">
         <label>Categoría <input name="category" value="${p?.category || ''}" /></label>
-        <label>Talle <input name="size" value="${p?.size || ''}" /></label>
+        <label>Color <input name="color" value="${p?.color || ''}" /></label>
       </div>
       <div class="grid-2">
-        <label>Color <input name="color" value="${p?.color || ''}" /></label>
-        <label>Stock <input name="stock" type="number" min="0" value="${p?.stock ?? 0}" required /></label>
+        <label>Pieza (si es parte de un conjunto) <input name="piece" value="${p?.piece || ''}" placeholder="Ej: Top" /></label>
+        <label>Talle <input name="size" value="${p?.size || ''}" /></label>
       </div>
+      <label>Stock <input name="stock" type="number" min="0" value="${p?.stock ?? 0}" required /></label>
       <div class="grid-2">
         <label>Precio costo <input name="costPrice" type="number" step="0.01" min="0" value="${p?.costPrice ?? ''}" /></label>
         <label>Precio venta <input name="salePrice" type="number" step="0.01" min="0" value="${p?.salePrice ?? ''}" required /></label>
