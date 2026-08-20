@@ -128,7 +128,19 @@
     <section id="view-stock" class="view">
       <div class="view-header-row">
         <h2>Stock</h2>
-        <button id="new-product-btn" class="btn btn-primary btn-sm">+ Prenda</button>
+        <div class="stock-header-actions">
+          <button id="new-product-btn" class="btn btn-primary btn-sm">+ Prenda</button>
+          <button id="new-product-batch-btn" class="btn btn-secondary btn-sm">+ Carga múltiple</button>
+        </div>
+      </div>
+      <div class="filters">
+        <label>Buscar <input type="text" id="stock-search" placeholder="🔍 Buscar prenda..." /></label>
+        <label>Categoría
+          <select id="stock-filter-category"><option value="">Todas las categorías</option></select>
+        </label>
+        <label id="stock-filter-supplier-wrap">Proveedor
+          <select id="stock-filter-supplier"><option value="">Todos los proveedores</option></select>
+        </label>
       </div>
       <div class="table-wrap">
         <table id="products-table">
@@ -160,6 +172,7 @@
     <!-- MOVIMIENTOS DE STOCK -->
     <section id="view-movimientos" class="view">
       <h2>Ingresos y egresos de mercadería</h2>
+      <div class="cards" id="stock-value-cards"></div>
       <form id="movement-form" class="form-card">
         <label>Prenda
           <select id="mov-product" required></select>
