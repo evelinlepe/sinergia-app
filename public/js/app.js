@@ -228,9 +228,14 @@ function renderProductsTable() {
   }
 
   list.forEach((p) => {
-    const stockBadge = p.stock <= p.lowStockThreshold
-      ? `<span class="badge badge-low">${p.stock}</span>`
-      : `<span class="badge badge-ok">${p.stock}</span>`;
+    const stockBadgeClass = p.stock <= p.lowStockThreshold ? 'badge-low' : 'badge-ok';
+    const stockCell = isOwner
+      ? `<span class="stock-adjust-controls">
+          <button type="button" class="btn btn-ghost btn-sm stock-step" data-pid="${p.id}" data-delta="-1" title="Restar 1" ${p.stock <= 0 ? 'disabled' : ''}>−</button>
+          <span class="badge ${stockBadgeClass}" data-stock-badge="${p.id}">${p.stock}</span>
+          <button type="button" class="btn btn-ghost btn-sm stock-step" data-pid="${p.id}" data-delta="1" title="Sumar 1">+</button>
+        </span>`
+      : `<span class="badge ${stockBadgeClass}">${p.stock}</span>`;
     const supplierName = state.suppliers.find((s) => s.id === p.supplierId)?.name || '—';
     const nameCell = p.setName && p.setName !== p.name
       ? `${p.name}<br><small style="color:var(--gray);">${p.setName}</small>`
@@ -239,22 +244,23 @@ function renderProductsTable() {
     const row = isOwner
       ? `<tr>
           <td>${nameCell}</td><td>${p.category || '—'}</td><td>${talleCell}</td><td>${p.color || '—'}</td>
-          <td>${money(p.costPrice)}</td><td>${money(p.salePrice)}</td><td>${stockBadge}</td><td>${supplierName}</td>
+          <td>${money(p.costPrice)}</td><td>${money(p.salePrice)}</td><td>${stockCell}</td><td>${supplierName}</td>
           <td>
-            <button class="btn btn-secondary btn-sm" data-adjust="${p.id}" title="Sumar o restar stock">Ajustar</button>
             <button class="btn btn-ghost btn-sm" data-edit="${p.id}">Editar</button>
             <button class="btn btn-danger btn-sm" data-del="${p.id}">Borrar</button>
           </td>
         </tr>`
       : `<tr>
           <td>${nameCell}</td><td>${p.category || '—'}</td><td>${talleCell}</td><td>${p.color || '—'}</td>
-          <td>${money(p.salePrice)}</td><td>${stockBadge}</td>
+          <td>${money(p.salePrice)}</td><td>${stockCell}</td>
         </tr>`;
     tbody.appendChild(el(row));
   });
 
   if (isOwner) {
-    tbody.querySelectorAll('[data-adjust]').forEach((b) => b.addEventListener('click', () => openStockAdjustForm(Number(b.dataset.adjust))));
+    tbody.querySelectorAll('.stock-step').forEach((b) =>
+      b.addEventListener('click', () => quickStockAdjust(Number(b.dataset.pid), Number(b.dataset.delta)))
+    );
     tbody.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => openProductForm(Number(b.dataset.edit))));
     tbody.querySelectorAll('[data-del]').forEach((b) =>
       b.addEventListener('click', async () => {
@@ -266,58 +272,30 @@ function renderProductsTable() {
   }
 }
 
-function openStockAdjustForm(id) {
+const stockAdjustBusy = new Set();
+
+async function quickStockAdjust(id, delta) {
+  if (stockAdjustBusy.has(id)) return;
   const p = state.products.find((x) => x.id === id);
-  if (!p) return;
-
-  const form = el(`
-    <form class="form-card" style="max-width:none;box-shadow:none;padding:0;">
-      <p style="margin-top:0;color:var(--gray);font-size:13px;">Stock actual: <strong>${p.stock}</strong></p>
-      <label>Tipo
-        <select name="type">
-          <option value="ingreso">Sumar (ingreso de mercadería)</option>
-          <option value="egreso">Restar (rotura, pérdida, devolución, venta fuera del sistema)</option>
-        </select>
-      </label>
-      <label>Cantidad <input name="qty" type="number" min="1" value="1" required /></label>
-      <label>Motivo (opcional) <input name="reason" placeholder="Ej: compra a proveedor, prenda dañada..." /></label>
-      <label class="checkbox-row" id="adjust-expense-wrap">
-        <input type="checkbox" name="registerAsExpense" />
-        Registrar también como gasto (costo x cantidad)
-      </label>
-      <p class="error-text" hidden></p>
-      <button type="submit" class="btn btn-primary btn-block">Guardar</button>
-    </form>
-  `);
-
-  const typeSelect = form.querySelector('select[name=type]');
-  const expenseWrap = form.querySelector('#adjust-expense-wrap');
-  const syncExpenseWrap = () => { expenseWrap.hidden = typeSelect.value !== 'ingreso'; };
-  syncExpenseWrap();
-  typeSelect.addEventListener('change', syncExpenseWrap);
-
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const fd = new FormData(form);
-    const payload = {
-      productId: p.id,
-      type: fd.get('type'),
-      qty: Number(fd.get('qty')),
-      reason: fd.get('reason') || '',
-      registerAsExpense: fd.get('registerAsExpense') === 'on'
-    };
-    const errEl = form.querySelector('.error-text');
-    try {
-      await api('/api/movements', { method: 'POST', body: payload });
-      closeModal();
-      loadStock();
-    } catch (err) {
-      errEl.textContent = err.message;
-      errEl.hidden = false;
-    }
-  });
-
-  showModal(`Ajustar stock — ${p.name}`, form);
+  if (!p || (delta < 0 && p.stock <= 0)) return;
+  stockAdjustBusy.add(id);
+  try {
+    await api('/api/movements', {
+      method: 'POST',
+      body: {
+        productId: id,
+        type: delta > 0 ? 'ingreso' : 'egreso',
+        qty: 1,
+        reason: delta > 0 ? 'Ajuste rápido (+1)' : 'Ajuste rápido (-1)'
+      }
+    });
+    p.stock += delta;
+    renderProductsTable();
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    stockAdjustBusy.delete(id);
+  }
 }
 
 document.getElementById('stock-search').addEventListener('input', renderProductsTable);
@@ -520,18 +498,15 @@ function todayStr() {
 
 let saleItemRowId = 0;
 
-function saleProductOptionsHtml() {
-  return state.products
-    .map((p) => `<option value="${p.id}" data-price="${p.salePrice}" data-stock="${p.stock}">${p.name}${p.size ? ' - ' + p.size : ''}${p.color ? ' - ' + p.color : ''} (stock: ${p.stock})</option>`)
-    .join('');
-}
-
 function addSaleItemRow() {
   const container = document.getElementById('sale-items');
   const rowId = ++saleItemRowId;
   const row = el(`
     <div class="sale-item-row" data-row-id="${rowId}">
-      <select class="sale-item-product">${saleProductOptionsHtml()}</select>
+      <div class="sale-item-picker">
+        <input type="text" class="sale-item-search" placeholder="Buscar prenda, pieza o conjunto..." autocomplete="off" />
+        <div class="sale-item-results" hidden></div>
+      </div>
       <input type="number" class="sale-item-qty" min="1" value="1" />
       <input type="number" class="sale-item-price" step="0.01" />
       <span class="sale-item-subtotal">$0</span>
@@ -539,13 +514,82 @@ function addSaleItemRow() {
     </div>
   `);
   container.appendChild(row);
-  const select = row.querySelector('.sale-item-product');
-  const priceInput = row.querySelector('.sale-item-price');
-  const opt = select.options[select.selectedIndex];
-  priceInput.value = opt ? opt.dataset.price : 0;
   updateSaleRowSubtotal(row);
   updateSaleRemoveButtonsState();
   return row;
+}
+
+// Busca por substring en cualquier parte del texto (no solo desde el
+// principio) y, si una prenda encontrada pertenece a un conjunto, trae
+// también al resto de sus piezas agrupadas, para poder elegir justo la que
+// se vendió (ej: buscar "campera" y poder elegir solo esa, dejando el short
+// del mismo conjunto sin tocar).
+function searchSaleProducts(query) {
+  const q = query.trim().toLowerCase();
+  let pool = state.products;
+  if (q) {
+    const direct = state.products.filter((p) =>
+      p.name.toLowerCase().includes(q) ||
+      (p.category || '').toLowerCase().includes(q) ||
+      (p.piece || '').toLowerCase().includes(q) ||
+      (p.size || '').toLowerCase().includes(q) ||
+      (p.setName || '').toLowerCase().includes(q)
+    );
+    const setNames = new Set(direct.filter((p) => p.setName).map((p) => p.setName));
+    pool = state.products.filter((p) => direct.includes(p) || (p.setName && setNames.has(p.setName)));
+  }
+  return pool.slice(0, 40);
+}
+
+function renderSaleResults(row, query) {
+  const resultsEl = row.querySelector('.sale-item-results');
+  const pool = searchSaleProducts(query);
+
+  if (pool.length === 0) {
+    resultsEl.innerHTML = '<div class="sale-item-result-empty">No se encontraron prendas.</div>';
+    resultsEl.hidden = false;
+    return;
+  }
+
+  const groups = new Map();
+  const standalone = [];
+  pool.forEach((p) => {
+    if (p.setName) {
+      if (!groups.has(p.setName)) groups.set(p.setName, []);
+      groups.get(p.setName).push(p);
+    } else {
+      standalone.push(p);
+    }
+  });
+
+  let html = '';
+  groups.forEach((items, setName) => {
+    html += `<div class="sale-item-result-group-label">${setName}</div>`;
+    items.forEach((p) => {
+      const label = p.piece ? (p.size ? `${p.piece} · ${p.size}` : p.piece) : (p.size || p.name);
+      html += `<div class="sale-item-result" data-pid="${p.id}"><span>${label}</span><span class="sale-item-result-stock">stock: ${p.stock}</span></div>`;
+    });
+  });
+  standalone.forEach((p) => {
+    html += `<div class="sale-item-result" data-pid="${p.id}"><span>${p.name}</span><span class="sale-item-result-stock">stock: ${p.stock}</span></div>`;
+  });
+
+  resultsEl.innerHTML = html;
+  resultsEl.hidden = false;
+}
+
+function selectSaleProduct(row, productId) {
+  const p = state.products.find((x) => x.id === productId);
+  if (!p) return;
+  row.dataset.productId = productId;
+  const label = p.setName
+    ? `${p.setName} — ${p.piece ? p.piece + (p.size ? ' · ' + p.size : '') : (p.size || '')}`
+    : p.name;
+  row.querySelector('.sale-item-search').value = label;
+  row.querySelector('.sale-item-price').value = p.salePrice;
+  row.querySelector('.sale-item-results').hidden = true;
+  updateSaleRowSubtotal(row);
+  updateSaleTotalPreview();
 }
 
 function updateSaleRemoveButtonsState() {
@@ -563,17 +607,31 @@ function updateSaleRowSubtotal(row) {
 
 document.getElementById('sale-add-item-btn').addEventListener('click', () => addSaleItemRow());
 
-document.getElementById('sale-items').addEventListener('change', (e) => {
-  if (e.target.classList.contains('sale-item-product')) {
-    const row = e.target.closest('.sale-item-row');
-    const opt = e.target.options[e.target.selectedIndex];
-    row.querySelector('.sale-item-price').value = opt ? opt.dataset.price : 0;
-    updateSaleRowSubtotal(row);
-    updateSaleTotalPreview();
+const saleItemsContainer = document.getElementById('sale-items');
+
+saleItemsContainer.addEventListener('focus', (e) => {
+  if (e.target.classList.contains('sale-item-search')) {
+    renderSaleResults(e.target.closest('.sale-item-row'), e.target.value);
   }
+}, true);
+
+saleItemsContainer.addEventListener('mousedown', (e) => {
+  if (e.target.closest('.sale-item-results')) e.preventDefault();
 });
 
-document.getElementById('sale-items').addEventListener('input', (e) => {
+saleItemsContainer.addEventListener('blur', (e) => {
+  if (e.target.classList.contains('sale-item-search')) {
+    const row = e.target.closest('.sale-item-row');
+    setTimeout(() => { row.querySelector('.sale-item-results').hidden = true; }, 150);
+  }
+}, true);
+
+saleItemsContainer.addEventListener('input', (e) => {
+  if (e.target.classList.contains('sale-item-search')) {
+    const row = e.target.closest('.sale-item-row');
+    delete row.dataset.productId;
+    renderSaleResults(row, e.target.value);
+  }
   if (e.target.classList.contains('sale-item-qty') || e.target.classList.contains('sale-item-price')) {
     const row = e.target.closest('.sale-item-row');
     updateSaleRowSubtotal(row);
@@ -581,7 +639,12 @@ document.getElementById('sale-items').addEventListener('input', (e) => {
   }
 });
 
-document.getElementById('sale-items').addEventListener('click', (e) => {
+saleItemsContainer.addEventListener('click', (e) => {
+  const resultEl = e.target.closest('.sale-item-result');
+  if (resultEl) {
+    selectSaleProduct(resultEl.closest('.sale-item-row'), Number(resultEl.dataset.pid));
+    return;
+  }
   if (e.target.classList.contains('sale-item-remove')) {
     const rows = document.querySelectorAll('#sale-items .sale-item-row');
     if (rows.length <= 1) return;
@@ -641,7 +704,7 @@ document.getElementById('sale-form').addEventListener('submit', async (e) => {
   const isCC = document.getElementById('sale-is-cc').checked;
 
   const items = Array.from(document.querySelectorAll('#sale-items .sale-item-row')).map((row) => ({
-    productId: Number(row.querySelector('.sale-item-product').value),
+    productId: row.dataset.productId ? Number(row.dataset.productId) : null,
     qty: Number(row.querySelector('.sale-item-qty').value),
     unitPrice: Number(row.querySelector('.sale-item-price').value)
   }));
