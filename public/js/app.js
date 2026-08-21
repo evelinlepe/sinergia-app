@@ -241,6 +241,7 @@ function renderProductsTable() {
           <td>${nameCell}</td><td>${p.category || '—'}</td><td>${talleCell}</td><td>${p.color || '—'}</td>
           <td>${money(p.costPrice)}</td><td>${money(p.salePrice)}</td><td>${stockBadge}</td><td>${supplierName}</td>
           <td>
+            <button class="btn btn-secondary btn-sm" data-adjust="${p.id}" title="Sumar o restar stock">Ajustar</button>
             <button class="btn btn-ghost btn-sm" data-edit="${p.id}">Editar</button>
             <button class="btn btn-danger btn-sm" data-del="${p.id}">Borrar</button>
           </td>
@@ -253,6 +254,7 @@ function renderProductsTable() {
   });
 
   if (isOwner) {
+    tbody.querySelectorAll('[data-adjust]').forEach((b) => b.addEventListener('click', () => openStockAdjustForm(Number(b.dataset.adjust))));
     tbody.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => openProductForm(Number(b.dataset.edit))));
     tbody.querySelectorAll('[data-del]').forEach((b) =>
       b.addEventListener('click', async () => {
@@ -262,6 +264,60 @@ function renderProductsTable() {
       })
     );
   }
+}
+
+function openStockAdjustForm(id) {
+  const p = state.products.find((x) => x.id === id);
+  if (!p) return;
+
+  const form = el(`
+    <form class="form-card" style="max-width:none;box-shadow:none;padding:0;">
+      <p style="margin-top:0;color:var(--gray);font-size:13px;">Stock actual: <strong>${p.stock}</strong></p>
+      <label>Tipo
+        <select name="type">
+          <option value="ingreso">Sumar (ingreso de mercadería)</option>
+          <option value="egreso">Restar (rotura, pérdida, devolución, venta fuera del sistema)</option>
+        </select>
+      </label>
+      <label>Cantidad <input name="qty" type="number" min="1" value="1" required /></label>
+      <label>Motivo (opcional) <input name="reason" placeholder="Ej: compra a proveedor, prenda dañada..." /></label>
+      <label class="checkbox-row" id="adjust-expense-wrap">
+        <input type="checkbox" name="registerAsExpense" />
+        Registrar también como gasto (costo x cantidad)
+      </label>
+      <p class="error-text" hidden></p>
+      <button type="submit" class="btn btn-primary btn-block">Guardar</button>
+    </form>
+  `);
+
+  const typeSelect = form.querySelector('select[name=type]');
+  const expenseWrap = form.querySelector('#adjust-expense-wrap');
+  const syncExpenseWrap = () => { expenseWrap.hidden = typeSelect.value !== 'ingreso'; };
+  syncExpenseWrap();
+  typeSelect.addEventListener('change', syncExpenseWrap);
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(form);
+    const payload = {
+      productId: p.id,
+      type: fd.get('type'),
+      qty: Number(fd.get('qty')),
+      reason: fd.get('reason') || '',
+      registerAsExpense: fd.get('registerAsExpense') === 'on'
+    };
+    const errEl = form.querySelector('.error-text');
+    try {
+      await api('/api/movements', { method: 'POST', body: payload });
+      closeModal();
+      loadStock();
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.hidden = false;
+    }
+  });
+
+  showModal(`Ajustar stock — ${p.name}`, form);
 }
 
 document.getElementById('stock-search').addEventListener('input', renderProductsTable);
