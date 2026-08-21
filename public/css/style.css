@@ -213,6 +213,48 @@ input:focus, select:focus { outline: none; border-color: var(--pink-dark); }
 
 .sale-add-item-btn { margin-bottom: 16px; }
 
+.sale-item-picker { position: relative; }
+.sale-item-picker input.sale-item-search { width: 100%; margin-top: 0; }
+
+.sale-item-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--white);
+  border: 1.5px solid #e6ddd2;
+  border-radius: 10px;
+  margin-top: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+  z-index: 40;
+  box-shadow: var(--shadow);
+}
+
+.sale-item-result-group-label {
+  padding: 7px 10px 3px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--pink-dark);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.sale-item-result {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.sale-item-result:hover,
+.sale-item-result:active { background: var(--beige-light); }
+
+.sale-item-result-stock { color: var(--gray); font-size: 12px; white-space: nowrap; }
+.sale-item-result-empty { padding: 10px; color: var(--gray); font-size: 13px; font-style: italic; }
+
 @media (max-width: 600px) {
   .sale-item-row {
     grid-template-columns: 1fr 1fr;
@@ -221,7 +263,7 @@ input:focus, select:focus { outline: none; border-color: var(--pink-dark); }
     padding-bottom: 12px;
     margin-bottom: 12px;
   }
-  .sale-item-row select { grid-area: product; }
+  .sale-item-row .sale-item-picker { grid-area: product; }
   .sale-item-row .sale-item-qty { grid-area: qty; }
   .sale-item-row .sale-item-price { grid-area: price; }
   .sale-item-row .sale-item-subtotal { grid-area: subtotal; align-self: center; }
@@ -229,6 +271,15 @@ input:focus, select:focus { outline: none; border-color: var(--pink-dark); }
 }
 
 .stock-header-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.stock-adjust-controls { display: inline-flex; align-items: center; gap: 6px; }
+.stock-adjust-controls .stock-step {
+  padding: 2px 9px;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+.stock-adjust-controls .stock-step:disabled { opacity: 0.35; cursor: not-allowed; }
 
 .batch-generator {
   background: var(--beige-light);
