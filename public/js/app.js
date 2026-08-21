@@ -533,12 +533,38 @@ function searchSaleProducts(query) {
       (p.category || '').toLowerCase().includes(q) ||
       (p.piece || '').toLowerCase().includes(q) ||
       (p.size || '').toLowerCase().includes(q) ||
+      (p.color || '').toLowerCase().includes(q) ||
       (p.setName || '').toLowerCase().includes(q)
     );
     const setNames = new Set(direct.filter((p) => p.setName).map((p) => p.setName));
     pool = state.products.filter((p) => direct.includes(p) || (p.setName && setNames.has(p.setName)));
   }
   return pool.slice(0, 40);
+}
+
+// Arma "Talle M · Negro" (o solo la parte que tenga cargada) para que se
+// pueda distinguir de un vistazo entre talles/colores de la misma prenda.
+function saleProductDetail(p) {
+  const parts = [];
+  if (p.size) parts.push(`Talle ${p.size}`);
+  if (p.color) parts.push(p.color);
+  return parts.join(' · ');
+}
+
+// Etiqueta de cada fila dentro del listado de resultados.
+function saleResultRowLabel(p) {
+  const base = p.piece || p.name;
+  const detail = saleProductDetail(p);
+  return detail ? `${base} — ${detail}` : base;
+}
+
+// Etiqueta que queda escrita en el buscador una vez que se elige la prenda
+// (acá sí hace falta repetir el nombre del conjunto, porque el encabezado
+// del grupo ya no se ve una vez cerrado el listado).
+function saleSelectedLabel(p) {
+  const base = p.setName ? `${p.setName} — ${p.piece || p.name}` : p.name;
+  const detail = saleProductDetail(p);
+  return detail ? `${base} — ${detail}` : base;
 }
 
 function renderSaleResults(row, query) {
@@ -566,12 +592,11 @@ function renderSaleResults(row, query) {
   groups.forEach((items, setName) => {
     html += `<div class="sale-item-result-group-label">${setName}</div>`;
     items.forEach((p) => {
-      const label = p.piece ? (p.size ? `${p.piece} · ${p.size}` : p.piece) : (p.size || p.name);
-      html += `<div class="sale-item-result" data-pid="${p.id}"><span>${label}</span><span class="sale-item-result-stock">stock: ${p.stock}</span></div>`;
+      html += `<div class="sale-item-result" data-pid="${p.id}"><span>${saleResultRowLabel(p)}</span><span class="sale-item-result-stock">stock: ${p.stock}</span></div>`;
     });
   });
   standalone.forEach((p) => {
-    html += `<div class="sale-item-result" data-pid="${p.id}"><span>${p.name}</span><span class="sale-item-result-stock">stock: ${p.stock}</span></div>`;
+    html += `<div class="sale-item-result" data-pid="${p.id}"><span>${saleResultRowLabel(p)}</span><span class="sale-item-result-stock">stock: ${p.stock}</span></div>`;
   });
 
   resultsEl.innerHTML = html;
@@ -582,10 +607,7 @@ function selectSaleProduct(row, productId) {
   const p = state.products.find((x) => x.id === productId);
   if (!p) return;
   row.dataset.productId = productId;
-  const label = p.setName
-    ? `${p.setName} — ${p.piece ? p.piece + (p.size ? ' · ' + p.size : '') : (p.size || '')}`
-    : p.name;
-  row.querySelector('.sale-item-search').value = label;
+  row.querySelector('.sale-item-search').value = saleSelectedLabel(p);
   row.querySelector('.sale-item-price').value = p.salePrice;
   row.querySelector('.sale-item-results').hidden = true;
   updateSaleRowSubtotal(row);
