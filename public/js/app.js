@@ -29,7 +29,31 @@ const NAV_ITEMS = [
   { id: 'usuarios', label: 'Usuarias', roles: ['duena'] }
 ];
 
+const CATEGORIES = [
+  'Accesorio', 'Biker', 'Buzos', 'Camperas', 'Capri', 'Catsuit corto', 'Catsuit largo',
+  'Leggins', 'Manga larga', 'Musculosas', 'Pantalones', 'Remeras', 'Short', 'Short pollera',
+  'Top', 'Vestidos'
+];
+
+// Arma las <option> de categoría. Si la prenda ya tenía cargada una categoría que no
+// está en la lista fija (ej. algo viejo escrito distinto), la deja como primera opción
+// para no perder el dato — pero lo ideal es pasarla a una de las categorías de la lista.
+function categoryOptionsHtml(selected) {
+  const extra = selected && !CATEGORIES.includes(selected) ? [selected] : [];
+  const opts = [...extra, ...CATEGORIES];
+  return '<option value="">—</option>' + opts.map((c) => <option value="${c}" ${c === selected ? 'selected' : ''}>${c}</option>).join('');
+}
+
 // ---------- helpers ----------
+// Saca tildes/acentos y pasa a minúsculas, para que buscar "pantalon" encuentre "Pantalón".
+function normalize(str) {
+  return (str || '')
+    .toString()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase();
+}
+
 async function api(url, options = {}) {
   const res = await fetch(url, {
     method: options.method || 'GET',
@@ -108,7 +132,7 @@ async function checkSession() {
 function enterApp() {
   document.getElementById('login-screen').hidden = true;
   document.getElementById('app').hidden = false;
-  document.getElementById('user-name').textContent = `${state.user.name} (${state.user.role === 'duena' ? 'Dueña' : 'Empleada'})`;
+  document.getElementById('user-name').textContent = ${state.user.name} (${state.user.role === 'duena' ? 'Dueña' : 'Empleada'});
   buildNav();
   showView('dashboard');
 }
@@ -153,24 +177,10 @@ async function loadDashboard() {
   cards.appendChild(cardEl('Ventas de hoy', money(d.todayTotal)));
   cards.appendChild(cardEl('Cantidad de ventas hoy', d.todayCount));
   if (d.pendingCC !== undefined) cards.appendChild(cardEl('Cuentas corrientes pendientes', money(d.pendingCC)));
-
-  const panel = document.getElementById('dashboard-lowstock');
-  if (d.lowStock.length === 0) {
-    panel.innerHTML = '<h3>Stock bajo</h3><p>No hay prendas con stock bajo. 🎉</p>';
-  } else {
-    panel.innerHTML = '<h3>Stock bajo</h3>';
-    const ul = document.createElement('ul');
-    d.lowStock.forEach((p) => {
-      const li = document.createElement('li');
-      li.textContent = `${p.name}${p.size ? ' — talle ' + p.size : ''}${p.color ? ' — ' + p.color : ''}: quedan ${p.stock}`;
-      ul.appendChild(li);
-    });
-    panel.appendChild(ul);
-  }
 }
 
 function cardEl(label, value) {
-  return el(`<div class="card"><div class="card-label">${label}</div><div class="card-value">${value}</div></div>`);
+  return el(<div class="card"><div class="card-label">${label}</div><div class="card-value">${value}</div></div>);
 }
 
 // ---------- STOCK ----------
@@ -194,14 +204,14 @@ async function loadStock() {
   const categories = Array.from(new Set(state.products.map((p) => p.category).filter(Boolean))).sort();
   const catSelect = document.getElementById('stock-filter-category');
   const prevCat = catSelect.value;
-  catSelect.innerHTML = '<option value="">Todas las categorías</option>' + categories.map((c) => `<option value="${c}">${c}</option>`).join('');
+  catSelect.innerHTML = '<option value="">Todas las categorías</option>' + categories.map((c) => <option value="${c}">${c}</option>).join('');
   catSelect.value = categories.includes(prevCat) ? prevCat : '';
 
   if (isOwner) {
     if (state.suppliers.length === 0) state.suppliers = await api('/api/suppliers');
     const supSelect = document.getElementById('stock-filter-supplier');
     const prevSup = supSelect.value;
-    supSelect.innerHTML = '<option value="">Todos los proveedores</option>' + state.suppliers.map((s) => `<option value="${s.id}">${s.name}</option>`).join('');
+    supSelect.innerHTML = '<option value="">Todos los proveedores</option>' + state.suppliers.map((s) => <option value="${s.id}">${s.name}</option>).join('');
     if (Array.from(supSelect.options).some((o) => o.value === prevSup)) supSelect.value = prevSup;
   }
 
@@ -210,20 +220,33 @@ async function loadStock() {
 
 function renderProductsTable() {
   const isOwner = state.user.role === 'duena';
-  const search = document.getElementById('stock-search').value.trim().toLowerCase();
+  const search = normalize(document.getElementById('stock-search').value.trim());
   const category = document.getElementById('stock-filter-category').value;
   const supplierId = isOwner ? document.getElementById('stock-filter-supplier').value : '';
 
   let list = state.products;
-  if (search) list = list.filter((p) => p.name.toLowerCase().includes(search));
+  if (search) {
+    list = list.filter((p) =>
+      normalize(p.name).includes(search) ||
+      normalize(p.category).includes(search) ||
+      normalize(p.color).includes(search) ||
+      normalize(p.size).includes(search) ||
+      normalize(p.piece).includes(search)
+    );
+  }
   if (category) list = list.filter((p) => p.category === category);
   if (supplierId) list = list.filter((p) => String(p.supplierId || '') === supplierId);
+
+  list = [...list].sort((a, b) =>
+    normalize(a.name).localeCompare(normalize(b.name), 'es', { sensitivity: 'base' }) ||
+    normalize(a.size || '').localeCompare(normalize(b.size || ''), 'es', { sensitivity: 'base' })
+  );
 
   const tbody = document.querySelector('#products-table tbody');
   tbody.innerHTML = '';
 
   if (list.length === 0) {
-    tbody.appendChild(el(`<tr><td colspan="${isOwner ? 9 : 6}" style="text-align:center;color:var(--gray);">No hay prendas que coincidan con la búsqueda.</td></tr>`));
+    tbody.appendChild(el(<tr><td colspan="${isOwner ? 9 : 6}" style="text-align:center;color:var(--gray);">No hay prendas que coincidan con la búsqueda.</td></tr>));
     return;
   }
 
@@ -235,12 +258,12 @@ function renderProductsTable() {
           <span class="badge ${stockBadgeClass}" data-stock-badge="${p.id}">${p.stock}</span>
           <button type="button" class="btn btn-ghost btn-sm stock-step" data-pid="${p.id}" data-delta="1" title="Sumar 1">+</button>
         </span>`
-      : `<span class="badge ${stockBadgeClass}">${p.stock}</span>`;
+      : <span class="badge ${stockBadgeClass}">${p.stock}</span>;
     const supplierName = state.suppliers.find((s) => s.id === p.supplierId)?.name || '—';
     const nameCell = p.setName && p.setName !== p.name
-      ? `${p.name}<br><small style="color:var(--gray);">${p.setName}</small>`
+      ? ${p.name}<br><small style="color:var(--gray);">${p.setName}</small>
       : p.name;
-    const talleCell = p.piece ? (p.size ? `${p.piece} · ${p.size}` : p.piece) : (p.size || '—');
+    const talleCell = p.piece ? (p.size ? ${p.piece} · ${p.size} : p.piece) : (p.size || '—');
     const row = isOwner
       ? `<tr>
           <td>${nameCell}</td><td>${p.category || '—'}</td><td>${talleCell}</td><td>${p.color || '—'}</td>
@@ -265,7 +288,7 @@ function renderProductsTable() {
     tbody.querySelectorAll('[data-del]').forEach((b) =>
       b.addEventListener('click', async () => {
         if (!confirm('¿Borrar esta prenda del stock?')) return;
-        await api(`/api/products/${b.dataset.del}`, { method: 'DELETE' });
+        await api(/api/products/${b.dataset.del}, { method: 'DELETE' });
         loadStock();
       })
     );
@@ -329,7 +352,7 @@ function updateBatchRemoveButtonsState(container) {
 
 async function openProductBatchForm() {
   if (state.suppliers.length === 0) state.suppliers = await api('/api/suppliers');
-  const supplierOptions = state.suppliers.map((s) => `<option value="${s.id}">${s.name}</option>`).join('');
+  const supplierOptions = state.suppliers.map((s) => <option value="${s.id}">${s.name}</option>).join('');
 
   const form = el(`
     <form class="form-card" style="max-width:none;box-shadow:none;padding:0;">
@@ -340,7 +363,7 @@ async function openProductBatchForm() {
       </p>
       <label>Nombre base <input name="name" required placeholder="Ej: Musculosa Blagnac negra" /></label>
       <div class="grid-2">
-        <label>Categoría <input name="category" /></label>
+        <label>Categoría <select name="category">${categoryOptionsHtml('')}</select></label>
         <label>Color <input name="color" /></label>
       </div>
       <div class="grid-2">
@@ -441,13 +464,13 @@ async function openProductForm(id) {
     state.suppliers = await api('/api/suppliers');
   }
   const p = id ? state.products.find((x) => x.id === id) : null;
-  const supplierOptions = state.suppliers.map((s) => `<option value="${s.id}" ${p?.supplierId === s.id ? 'selected' : ''}>${s.name}</option>`).join('');
+  const supplierOptions = state.suppliers.map((s) => <option value="${s.id}" ${p?.supplierId === s.id ? 'selected' : ''}>${s.name}</option>).join('');
 
   const form = el(`
     <form class="form-card" style="max-width:none;box-shadow:none;padding:0;">
       <label>Nombre <input name="name" required value="${p?.name || ''}" /></label>
       <div class="grid-2">
-        <label>Categoría <input name="category" value="${p?.category || ''}" /></label>
+        <label>Categoría <select name="category">${categoryOptionsHtml(p?.category || '')}</select></label>
         <label>Color <input name="color" value="${p?.color || ''}" /></label>
       </div>
       <div class="grid-2">
@@ -475,7 +498,7 @@ async function openProductForm(id) {
     const fd = new FormData(form);
     const payload = Object.fromEntries(fd.entries());
     try {
-      if (p) await api(`/api/products/${p.id}`, { method: 'PUT', body: payload });
+      if (p) await api(/api/products/${p.id}, { method: 'PUT', body: payload });
       else await api('/api/products', { method: 'POST', body: payload });
       closeModal();
       loadStock();
@@ -546,7 +569,7 @@ function searchSaleProducts(query) {
 // pueda distinguir de un vistazo entre talles/colores de la misma prenda.
 function saleProductDetail(p) {
   const parts = [];
-  if (p.size) parts.push(`Talle ${p.size}`);
+  if (p.size) parts.push(Talle ${p.size});
   if (p.color) parts.push(p.color);
   return parts.join(' · ');
 }
@@ -555,16 +578,16 @@ function saleProductDetail(p) {
 function saleResultRowLabel(p) {
   const base = p.piece || p.name;
   const detail = saleProductDetail(p);
-  return detail ? `${base} — ${detail}` : base;
+  return detail ? ${base} — ${detail} : base;
 }
 
 // Etiqueta que queda escrita en el buscador una vez que se elige la prenda
 // (acá sí hace falta repetir el nombre del conjunto, porque el encabezado
 // del grupo ya no se ve una vez cerrado el listado).
 function saleSelectedLabel(p) {
-  const base = p.setName ? `${p.setName} — ${p.piece || p.name}` : p.name;
+  const base = p.setName ? ${p.setName} — ${p.piece || p.name} : p.name;
   const detail = saleProductDetail(p);
-  return detail ? `${base} — ${detail}` : base;
+  return detail ? ${base} — ${detail} : base;
 }
 
 function renderSaleResults(row, query) {
@@ -590,13 +613,13 @@ function renderSaleResults(row, query) {
 
   let html = '';
   groups.forEach((items, setName) => {
-    html += `<div class="sale-item-result-group-label">${setName}</div>`;
+    html += <div class="sale-item-result-group-label">${setName}</div>;
     items.forEach((p) => {
-      html += `<div class="sale-item-result" data-pid="${p.id}"><span>${saleResultRowLabel(p)}</span><span class="sale-item-result-stock">stock: ${p.stock}</span></div>`;
+      html += <div class="sale-item-result" data-pid="${p.id}"><span>${saleResultRowLabel(p)}</span><span class="sale-item-result-stock">stock: ${p.stock}</span></div>;
     });
   });
   standalone.forEach((p) => {
-    html += `<div class="sale-item-result" data-pid="${p.id}"><span>${saleResultRowLabel(p)}</span><span class="sale-item-result-stock">stock: ${p.stock}</span></div>`;
+    html += <div class="sale-item-result" data-pid="${p.id}"><span>${saleResultRowLabel(p)}</span><span class="sale-item-result-stock">stock: ${p.stock}</span></div>;
   });
 
   resultsEl.innerHTML = html;
@@ -687,7 +710,7 @@ async function loadVentaView() {
 
   state.clients = await api('/api/clients');
   const clientSelect = document.getElementById('sale-client');
-  clientSelect.innerHTML = state.clients.map((c) => `<option value="${c.id}">${c.name}</option>`).join('');
+  clientSelect.innerHTML = state.clients.map((c) => <option value="${c.id}">${c.name}</option>).join('');
 
   updateSaleTotalPreview();
 }
@@ -756,7 +779,7 @@ document.getElementById('sale-form').addEventListener('submit', async (e) => {
     document.getElementById('sale-payment-wrap').hidden = false;
     document.getElementById('sale-client-wrap').hidden = true;
     await loadVentaView();
-    alert(`Venta registrada ✔ (${items.length} prenda${items.length > 1 ? 's' : ''})`);
+    alert(Venta registrada ✔️ (${items.length} prenda${items.length > 1 ? 's' : ''}));
   } catch (err) {
     errEl.textContent = err.message;
     errEl.hidden = false;
@@ -792,7 +815,7 @@ async function loadHistorial(params = {}) {
         <td>${money(s.total)}</td>
         <td>${idx === 0 ? (PAYMENT_LABELS[s.paymentMethod] || s.paymentMethod) + (s.clientName ? ' (' + s.clientName + ')' : '') : ''}</td>
         <td>${idx === 0 ? s.employeeName : ''}</td>
-        <td>${isOwner ? `<button class="btn btn-ghost btn-sm" data-edit="${s.id}">Editar</button> <button class="btn btn-danger btn-sm" data-del="${s.id}">Borrar</button>` : ''}</td>
+        <td>${isOwner ? <button class="btn btn-ghost btn-sm" data-edit="${s.id}">Editar</button> <button class="btn btn-danger btn-sm" data-del="${s.id}">Borrar</button> : ''}</td>
       </tr>`);
       tbody.appendChild(row);
     });
@@ -811,7 +834,7 @@ async function loadHistorial(params = {}) {
     tbody.querySelectorAll('[data-del]').forEach((b) =>
       b.addEventListener('click', async () => {
         if (!confirm('¿Borrar esta venta? Se repone el stock.')) return;
-        await api(`/api/sales/${b.dataset.del}`, { method: 'DELETE' });
+        await api(/api/sales/${b.dataset.del}, { method: 'DELETE' });
         loadHistorial();
       })
     );
@@ -857,7 +880,7 @@ function openSaleEditForm(sale) {
     e.preventDefault();
     const payload = Object.fromEntries(new FormData(form).entries());
     try {
-      await api(`/api/sales/${sale.id}`, { method: 'PUT', body: payload });
+      await api(/api/sales/${sale.id}, { method: 'PUT', body: payload });
       closeModal();
       loadHistorial();
     } catch (err) {
@@ -891,7 +914,7 @@ async function loadSuppliers() {
   tbody.querySelectorAll('[data-del]').forEach((b) =>
     b.addEventListener('click', async () => {
       if (!confirm('¿Borrar este proveedor?')) return;
-      await api(`/api/suppliers/${b.dataset.del}`, { method: 'DELETE' });
+      await api(/api/suppliers/${b.dataset.del}, { method: 'DELETE' });
       loadSuppliers();
     })
   );
@@ -912,7 +935,7 @@ function openSupplierForm(id) {
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const payload = Object.fromEntries(new FormData(form).entries());
-    if (s) await api(`/api/suppliers/${s.id}`, { method: 'PUT', body: payload });
+    if (s) await api(/api/suppliers/${s.id}, { method: 'PUT', body: payload });
     else await api('/api/suppliers', { method: 'POST', body: payload });
     closeModal();
     loadSuppliers();
@@ -924,7 +947,7 @@ function openSupplierForm(id) {
 async function loadMovimientos() {
   await refreshProducts();
   const select = document.getElementById('mov-product');
-  select.innerHTML = state.products.map((p) => `<option value="${p.id}">${p.name}${p.size ? ' - ' + p.size : ''}</option>`).join('');
+  select.innerHTML = state.products.map((p) => <option value="${p.id}">${p.name}${p.size ? ' - ' + p.size : ''}</option>).join('');
 
   const totalCosto = state.products.reduce((s, p) => s + (Number(p.costPrice) || 0) * (Number(p.stock) || 0), 0);
   const totalVenta = state.products.reduce((s, p) => s + (Number(p.salePrice) || 0) * (Number(p.stock) || 0), 0);
@@ -983,7 +1006,7 @@ async function loadGastos() {
   tbody.querySelectorAll('[data-del]').forEach((b) =>
     b.addEventListener('click', async () => {
       if (!confirm('¿Borrar este gasto?')) return;
-      await api(`/api/expenses/${b.dataset.del}`, { method: 'DELETE' });
+      await api(/api/expenses/${b.dataset.del}, { method: 'DELETE' });
       loadGastos();
     })
   );
@@ -1033,7 +1056,7 @@ function openClientForm(id, forSaleForm) {
     if (forSaleForm) {
       state.clients.push(client);
       const clientSelect = document.getElementById('sale-client');
-      clientSelect.innerHTML = state.clients.map((c) => `<option value="${c.id}">${c.name}</option>`).join('');
+      clientSelect.innerHTML = state.clients.map((c) => <option value="${c.id}">${c.name}</option>).join('');
       clientSelect.value = client.id;
     } else {
       loadClientes();
@@ -1049,7 +1072,7 @@ async function openClientDetail(id) {
 }
 
 async function refreshClientDetail() {
-  const { client, balance, movements } = await api(`/api/clients/${state.currentClientId}/ledger`);
+  const { client, balance, movements } = await api(/api/clients/${state.currentClientId}/ledger);
   document.getElementById('cc-detail-name').textContent = client.name;
   document.getElementById('cc-detail-balance').textContent = money(balance);
   const isOwner = state.user.role === 'duena';
@@ -1061,13 +1084,13 @@ async function refreshClientDetail() {
       <td>${m.kind === 'cargo' ? m.productName : 'Pago (' + (PAYMENT_LABELS[m.paymentMethod] || m.paymentMethod) + ')'}</td>
       <td>${m.kind === 'cargo' ? money(m.amount) : ''}</td>
       <td>${m.kind === 'pago' ? money(m.amount) : ''}</td>
-      <td>${isOwner && m.kind === 'pago' ? `<button class="btn btn-danger btn-sm" data-delpay="${m.id}">Borrar</button>` : ''}</td>
+      <td>${isOwner && m.kind === 'pago' ? <button class="btn btn-danger btn-sm" data-delpay="${m.id}">Borrar</button> : ''}</td>
     </tr>`));
   });
   tbody.querySelectorAll('[data-delpay]').forEach((b) =>
     b.addEventListener('click', async () => {
       if (!confirm('¿Borrar este pago?')) return;
-      await api(`/api/payments/${b.dataset.delpay}`, { method: 'DELETE' });
+      await api(/api/payments/${b.dataset.delpay}, { method: 'DELETE' });
       refreshClientDetail();
     })
   );
@@ -1081,7 +1104,7 @@ document.getElementById('cc-payment-form').addEventListener('submit', async (e) 
     amount: Number(document.getElementById('cc-payment-amount').value),
     paymentMethod: document.getElementById('cc-payment-method').value
   };
-  await api(`/api/clients/${state.currentClientId}/payments`, { method: 'POST', body: payload });
+  await api(/api/clients/${state.currentClientId}/payments, { method: 'POST', body: payload });
   document.getElementById('cc-payment-form').reset();
   refreshClientDetail();
 });
@@ -1104,13 +1127,13 @@ async function loadReportes(params = {}) {
   const payTbody = document.querySelector('#report-payment-table tbody');
   payTbody.innerHTML = '';
   Object.entries(r.porMedioPago).forEach(([method, total]) => {
-    payTbody.appendChild(el(`<tr><td>${PAYMENT_LABELS[method] || method}</td><td>${money(total)}</td></tr>`));
+    payTbody.appendChild(el(<tr><td>${PAYMENT_LABELS[method] || method}</td><td>${money(total)}</td></tr>));
   });
 
   const topTbody = document.querySelector('#report-top-table tbody');
   topTbody.innerHTML = '';
   r.topProductos.forEach((p) => {
-    topTbody.appendChild(el(`<tr><td>${p.name}</td><td>${p.unidades} un.</td><td>${money(p.total)}</td></tr>`));
+    topTbody.appendChild(el(<tr><td>${p.name}</td><td>${p.unidades} un.</td><td>${money(p.total)}</td></tr>));
   });
 }
 
@@ -1128,7 +1151,7 @@ async function loadUsuarios() {
       <td>${u.username}</td><td>${u.name}</td><td>${u.role === 'duena' ? 'Dueña' : 'Empleada'}</td>
       <td>
         <button class="btn btn-ghost btn-sm" data-edit="${u.id}">Editar</button>
-        ${u.id !== state.user.id ? `<button class="btn btn-danger btn-sm" data-del="${u.id}">Borrar</button>` : ''}
+        ${u.id !== state.user.id ? <button class="btn btn-danger btn-sm" data-del="${u.id}">Borrar</button> : ''}
       </td>
     </tr>`));
   });
@@ -1136,7 +1159,7 @@ async function loadUsuarios() {
   tbody.querySelectorAll('[data-del]').forEach((b) =>
     b.addEventListener('click', async () => {
       if (!confirm('¿Borrar esta usuaria?')) return;
-      await api(`/api/users/${b.dataset.del}`, { method: 'DELETE' });
+      await api(/api/users/${b.dataset.del}, { method: 'DELETE' });
       loadUsuarios();
     })
   );
@@ -1164,7 +1187,7 @@ function openUserForm(u) {
     e.preventDefault();
     const payload = Object.fromEntries(new FormData(form).entries());
     try {
-      if (u) await api(`/api/users/${u.id}`, { method: 'PUT', body: payload });
+      if (u) await api(/api/users/${u.id}, { method: 'PUT', body: payload });
       else await api('/api/users', { method: 'POST', body: payload });
       closeModal();
       loadUsuarios();
